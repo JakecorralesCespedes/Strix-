@@ -1,7 +1,7 @@
 import apiClient from './api-config';
 import type { CreateTimeEntryDto } from '../types';
 
-const API_BASE = '/api/time-entries';
+const API_BASE = '/time-entries';
 
 export const timeEntriesService = {
   // Record clock-in

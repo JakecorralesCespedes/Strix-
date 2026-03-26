@@ -10,4 +10,5 @@ export type PageConfigType = {
   title: string;
   component: ComponentType;
   open?: boolean;
+  permissions?: string[];
 };

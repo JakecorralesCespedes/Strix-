@@ -1,15 +1,31 @@
 <script lang="ts">
-  import { Alert, Badge, Button, Heading, Modal, TableBodyCell, TableBodyRow, Spinner } from "flowbite-svelte";
+  import {
+    Alert,
+    Badge,
+    Button,
+    Heading,
+    Modal,
+    Select,
+    TableBodyCell,
+    TableBodyRow,
+  } from "flowbite-svelte";
   import { onMount } from "svelte";
   import Table from "$lib/components/Table.svelte";
-  import { getScholarshipRequests } from "$lib/services/scholarship-request.service";
-  import type { StudentOnDepartment, TableHeader, TablePagination } from "$lib/types";
+  import {
+    getScholarshipRequests,
+    updateScholarshipRequest,
+  } from "$lib/services/scholarship-request.service";
+  import { getDepartment } from "$lib/services/department.service";
+  import type { Department, StudentOnDepartment, TableHeader, TablePagination } from "$lib/types";
 
   let requests: StudentOnDepartment[] = [];
   let error: string | null = null;
   let pagination: TablePagination = { page: 1 };
   let selectedRequest: StudentOnDepartment | null = null;
   let detailsOpen = false;
+  let departmentOptions: Department[] = [];
+  let selectedDepartmentId: number | null = null;
+  let selectedStatus: string = "PENDING";
 
   const headers: TableHeader[] = [
     { name: "ID", field: "id" },
@@ -46,6 +62,11 @@
     error = null;
   }
 
+  async function loadDepartments() {
+    const res = await getDepartment({ page: 1, size: 200 });
+    departmentOptions = res?.data ?? [];
+  }
+
   function nextPage() {
     pagination.page = pagination.next_page ?? pagination.page;
     loadRequests();
@@ -58,11 +79,35 @@
 
   function openDetails(request: StudentOnDepartment) {
     selectedRequest = request;
+    selectedDepartmentId = request.departmentId;
+    selectedStatus = request.status;
     detailsOpen = true;
+  }
+
+  async function handleSave() {
+    if (!selectedRequest) return;
+
+    const departmentId = selectedDepartmentId
+      ? Number(selectedDepartmentId)
+      : undefined;
+
+    const updated = await updateScholarshipRequest(selectedRequest.id, {
+      status: selectedStatus as "PENDING" | "APPROVED" | "REJECTED",
+      departmentId,
+    });
+
+    if (!updated) {
+      error = "No se pudo actualizar la solicitud.";
+      return;
+    }
+
+    detailsOpen = false;
+    await loadRequests();
   }
 
   onMount(() => {
     loadRequests();
+    loadDepartments();
   });
 </script>
 
@@ -109,7 +154,12 @@
       </div>
       <div>
         <p class="text-sm text-gray-500">Departamento</p>
-        <p class="font-medium">{selectedRequest.department?.name ?? "-"}</p>
+        <Select bind:value={selectedDepartmentId}>
+          <option value={""}>Selecciona un departamento</option>
+          {#each departmentOptions as department}
+            <option value={department.id}>{department.name}</option>
+          {/each}
+        </Select>
       </div>
       <div>
         <p class="text-sm text-gray-500">Teléfono</p>
@@ -117,19 +167,17 @@
       </div>
       <div>
         <p class="text-sm text-gray-500">Estado</p>
-        <Badge color={getBadgeColor(selectedRequest.status)}>
-          {selectedRequest.status}
-        </Badge>
+        <Select bind:value={selectedStatus}>
+          <option value="PENDING">PENDING</option>
+          <option value="APPROVED">APPROVED</option>
+          <option value="REJECTED">REJECTED</option>
+        </Select>
       </div>
     </div>
   {/if}
 
   <svelte:fragment slot="footer">
-    {#if selectedRequest?.status === "PENDING"}
-      <Button color="primary" on:click={() => { /* TODO: implement approval */ }}>
-        Aprobar Solicitud
-      </Button>
-    {/if}
+    <Button color="primary" on:click={handleSave}>Guardar cambios</Button>
     <Button color="alternative" on:click={() => (detailsOpen = false)}>
       Cerrar
     </Button>

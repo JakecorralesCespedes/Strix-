@@ -11,9 +11,9 @@
   import BreadCrumb from "./BreadCrumb.svelte";
   import { type BreadCrumItemType } from "./types";
   import { navigate, useLocation } from "svelte-routing";
-  import { logOut } from "../../stores/user.store";
-  import { getCurrentUser } from "$lib/services/user.service";
+  import { logOut, userStore } from "../../stores/user.store";
   import type { User } from "$lib/types";
+  import { hasAnyPermission } from "$lib/utils/permissions";
 
   let currentUser: User | null = null;
   let currentPath = "/";
@@ -28,10 +28,9 @@
     "/time-tracking": "Registro de Tiempo",
   };
 
-  async function loadCurrentUser() {
-    const user = await getCurrentUser();
-    currentUser = user ?? null;
-  }
+  userStore.subscribe((value) => {
+    currentUser = value.dbUser ?? null;
+  });
 
   $: breadCrumItems = [
     { title: "Home", path: "/", isHome: true },
@@ -52,14 +51,20 @@
 
   $: currentPath = $location.pathname || "/";
 
-  // Menu visibility based on role
-  $: isAdmin = currentUser?.role?.name === "Admin";
-  $: canViewSholarships = isAdmin;
-  $: canViewWorkHours = isAdmin;
-  $: canViewReports = isAdmin;
-  $: canViewTimeTracking = true;
-
-  loadCurrentUser();
+  // Menu visibility based on permissions stored in DB
+  $: canViewConfig = hasAnyPermission(currentUser, [
+    "configs.read",
+    "users.read",
+    "departments.read",
+    "periods.read",
+    "roles.read",
+    "permissions.read",
+    "pricing.read",
+  ]);
+  $: canViewScholarships = hasAnyPermission(currentUser, ["scholarship.read"]);
+  $: canViewWorkHours = hasAnyPermission(currentUser, ["work-hours.read"]);
+  $: canViewReports = hasAnyPermission(currentUser, ["reports.read"]);
+  $: canViewTimeTracking = hasAnyPermission(currentUser, ["time-entries.read"]);
 </script>
 
 <div class="h-screen px-8 pt-4">
@@ -70,12 +75,12 @@
       </Button>
 
       <Dropdown>
-        {#if isAdmin}
+        {#if canViewConfig}
           <DropdownItem on:click={() => handleMenu("/configuraciones")}
             >Configuraciones</DropdownItem
           >
         {/if}
-        {#if canViewSholarships}
+        {#if canViewScholarships}
           <DropdownItem on:click={() => handleMenu("/solicitudes")}
             >Solicitudes</DropdownItem
           >

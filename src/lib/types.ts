@@ -134,9 +134,9 @@ export type WorkHours = {
   name: string;
   start: Date;
   end: Date;
-  amount: number;
-  price: number;
-  total: number;
+  amount: number | null;
+  price: number | null;
+  total: number | null;
   status: WorkHoursStatus;
   registedBy: number;
   studentId: number;

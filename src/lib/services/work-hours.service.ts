@@ -9,14 +9,17 @@ export type PaginationQuery = {
   departmentId?: number;
   studentId?: number;
   periodId?: number;
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  startDate?: string;
+  endDate?: string;
 };
 
 export type CreateWorkHoursBody = {
   name: string;
   start: string;
   end: string;
-  amount: number;
-  price: number;
+  amount?: number;
+  price?: number;
   status?: "PENDING" | "APPROVED" | "REJECTED";
   studentId: number;
   departmentId: number;

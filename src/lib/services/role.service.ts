@@ -8,12 +8,35 @@ export type PaginationQuery = {
   size?: number;
 };
 
+export type RolePayload = {
+  name: string;
+  allowedPermissions: string[];
+};
+
 export async function getRoles(query?: PaginationQuery) {
   try {
     const result = await api.get<ApiPagination<Role>>(DEFAULT_ENDPOINT, {
       params: query,
     });
 
+    return result.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function createRole(payload: RolePayload) {
+  try {
+    const result = await api.post<Role>(DEFAULT_ENDPOINT, payload);
+    return result.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function updateRole(id: number, payload: RolePayload) {
+  try {
+    const result = await api.put<Role>(`${DEFAULT_ENDPOINT}/${id}`, payload);
     return result.data;
   } catch (error) {
     return null;

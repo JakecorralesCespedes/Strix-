@@ -92,6 +92,64 @@
     return "yellow";
   }
 
+  function buildCsvValue(value: unknown) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    const text = String(value);
+    if (text.includes(",") || text.includes("\n") || text.includes('"')) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  }
+
+  function exportWorkHoursCsv() {
+    if (!workHours.length) {
+      error = "No hay horas registradas para exportar.";
+      return;
+    }
+
+    const headers = [
+      "Estudiante",
+      "Departamento",
+      "Entrada",
+      "Salida",
+      ...(canViewFinancials ? ["Horas", "Precio", "Total"] : []),
+      "Estado",
+    ];
+
+    const rows = workHours.map(mapHoursForDisplay).map((row) => [
+      row.studentName,
+      row.departmentName,
+      new Date(row.start).toLocaleString(),
+      new Date(row.end).toLocaleString(),
+      ...(canViewFinancials
+        ? [row.amount ?? "", row.price ?? "", row.total ?? ""]
+        : []),
+      row.status,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map(buildCsvValue).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "horas-beca.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handlePrint() {
+    if (!workHours.length) {
+      error = "No hay horas registradas para imprimir.";
+      return;
+    }
+    window.print();
+  }
+
   async function loadWorkHours() {
     const res = await getWorkHours({
       page: pagination.page,
@@ -298,8 +356,17 @@
       <p class="text-sm text-gray-500">Hasta</p>
       <Input type="date" bind:value={endDateFilter} />
     </div>
-    <div class="flex items-end">
+    <div class="flex items-end gap-2 flex-wrap">
       <Button color="primary" on:click={openForm}>Registrar horas</Button>
+      <Button
+        color="alternative"
+        on:click={exportWorkHoursCsv}
+        disabled={!workHours.length}
+        >Exportar CSV</Button
+      >
+      <Button color="alternative" on:click={handlePrint} disabled={!workHours.length}
+        >Imprimir</Button
+      >
     </div>
   </div>
 

@@ -25,7 +25,6 @@
     "/solicitudes": "Solicitudes",
     "/horas-beca": "Horas beca",
     "/reportes": "Reportes",
-    "/time-tracking": "Registro de Tiempo",
   };
 
   userStore.subscribe((value) => {
@@ -64,7 +63,6 @@
   $: canViewScholarships = hasAnyPermission(currentUser, ["scholarship.read"]);
   $: canViewWorkHours = hasAnyPermission(currentUser, ["work-hours.read"]);
   $: canViewReports = hasAnyPermission(currentUser, ["reports.read"]);
-  $: canViewTimeTracking = hasAnyPermission(currentUser, ["time-entries.read"]);
 </script>
 
 <div class="h-screen px-8 pt-4">
@@ -88,11 +86,6 @@
         {#if canViewWorkHours}
           <DropdownItem on:click={() => handleMenu("/horas-beca")}
             >Horas beca</DropdownItem
-          >
-        {/if}
-        {#if canViewTimeTracking}
-          <DropdownItem on:click={() => handleMenu("/time-tracking")}
-            >Registro de Tiempo</DropdownItem
           >
         {/if}
         {#if canViewReports}

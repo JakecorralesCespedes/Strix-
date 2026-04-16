@@ -46,6 +46,45 @@
     return "yellow";
   }
 
+  function buildCsvValue(value: unknown) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    const text = String(value);
+    if (text.includes(",") || text.includes("\n") || text.includes('"')) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  }
+
+  function exportRequestsCsv() {
+    if (!requests.length) {
+      error = "No hay solicitudes para exportar.";
+      return;
+    }
+
+    const headers = ["ID", "Estudiante", "Email", "Departamento", "Estado"];
+    const rows = requests.map((request) => [
+      request.id,
+      request.student?.name ?? "-",
+      request.student?.email ?? "-",
+      request.department?.name ?? "-",
+      request.status,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map(buildCsvValue).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "solicitudes-beca.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function loadRequests() {
     const res = await getScholarshipRequests({ page: pagination.page });
 
@@ -112,7 +151,16 @@
 </script>
 
 <div class="w-full h-full px-4 grid gap-3">
-  <Heading tag="h3" class="mb-2">Solicitudes de Beca</Heading>
+  <div class="flex items-center justify-between">
+    <Heading tag="h3" class="mb-2">Solicitudes de Beca</Heading>
+    <Button
+      size="sm"
+      color="alternative"
+      on:click={exportRequestsCsv}
+      disabled={!requests.length}
+      >Exportar CSV</Button
+    >
+  </div>
 
   {#if error}
     <Alert type="error" dismissable>{error}</Alert>

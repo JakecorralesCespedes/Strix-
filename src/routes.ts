@@ -4,7 +4,6 @@ import Login from "./lib/pages/Login.svelte";
 import Solicitudes from "./lib/pages/Solicitudes.svelte";
 import HorasBeca from "./lib/pages/HorasBeca.svelte";
 import Reportes from "./lib/pages/Reportes.svelte";
-import TimeTracking from "./lib/pages/TimeTracking.svelte";
 
 export type RouterType = {
   path: string;
@@ -36,11 +35,6 @@ const routes: RouterType[] = [
   {
     path: "/reportes",
     component: Reportes,
-    authRequired: true,
-  },
-  {
-    path: "/time-tracking",
-    component: TimeTracking,
     authRequired: true,
   },
   {

@@ -78,9 +78,11 @@ export type Department = {
   name: string;
   code: string;
   pricingId?: number;
+  headId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
   pricing?: Pricing;
+  head?: User;
   users?: User[];
   students?: StudentOnDepartment[];
   hours?: WorkHours[];

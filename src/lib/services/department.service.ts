@@ -10,6 +10,13 @@ export type paginationQuery = {
 
 export type GetDepartmentQuery = paginationQuery & {};
 
+export type DepartmentPayload = {
+  name: string;
+  code: string;
+  pricingId?: number;
+  headId?: number | null;
+};
+
 export async function getDepartment(query?: GetDepartmentQuery) {
   try {
     const result = await api.get<ApiPagination<Department>>(DEFAULT_ENDPOINT, {
@@ -22,7 +29,7 @@ export async function getDepartment(query?: GetDepartmentQuery) {
   }
 }
 
-export async function createDepartment(body: Department) {
+export async function createDepartment(body: DepartmentPayload) {
   try {
     const result = await api.post<Department>(DEFAULT_ENDPOINT, body);
 
@@ -32,7 +39,7 @@ export async function createDepartment(body: Department) {
   }
 }
 
-export async function updateDepartment(id: number, body: Department) {
+export async function updateDepartment(id: number, body: DepartmentPayload) {
   try {
     const result = await api.put<Department>(`${DEFAULT_ENDPOINT}/${id}`, body);
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Alert,
     Button,
     Input,
     Label,
@@ -30,7 +31,10 @@
   let userOptions: User[] = [];
   let availableHeads: User[] = [];
   let selectedHeadId: number | string | null = null;
+  let headInitialized = false;
+  let currentDepartmentId: number | null = null;
   let isLoading = false;
+  let formError: string | null = null;
 
   $: title = formMode === "create"
     ? "Crear Departamento"
@@ -47,50 +51,82 @@
 
   $: availableHeads =
     formMode === "update" && data.id
-      ? userOptions.filter((user) => user.departmentId === data.id)
+      ? userOptions.filter((user) => {
+          const userDeptId = user.departmentId ?? user.department?.id;
+          return userDeptId === data.id || user.id === data.headId;
+        })
       : [];
 
-  $: if (formMode === "update") {
-    selectedHeadId = data.headId ?? 0;
-  } else {
+  $: if (!open) {
+    headInitialized = false;
+    currentDepartmentId = null;
+  }
+
+  $: if (open && formMode === "update" && data.id) {
+    if (data.id !== currentDepartmentId || !headInitialized) {
+      currentDepartmentId = data.id;
+      selectedHeadId = data.headId ?? data.head?.id ?? 0;
+      headInitialized = true;
+    }
+  }
+
+  $: if (open && formMode === "create" && !headInitialized) {
     selectedHeadId = 0;
+    headInitialized = true;
   }
   function close() {
     dispatch("close");
     open = false;
     isLoading = false;
+    formError = null;
   }
-  function handleSubmit() {
+  async function handleSubmit() {
+    formError = null;
     isLoading = true;
+    const pricingIdValue = Number(data.pricingId);
+    const pricingId = Number.isFinite(pricingIdValue) && pricingIdValue > 0
+      ? pricingIdValue
+      : undefined;
+
     if (formMode === "create") {
-      createDepartment({
+      const res = await createDepartment({
         name: data.name,
         code: data.code,
-        pricingId: data.pricingId,
-      }).then((res) => {
-        close();
+        pricingId,
       });
-      // create
-    } else {
-      const headIdValue = Number(selectedHeadId);
-      const headId = headIdValue > 0 ? headIdValue : null;
-      // update
-      updateDepartment(data.id as number, {
-        name: data.name,
-        code: data.code,
-        pricingId: data.pricingId,
-        headId,
-      }).then((res) => {
-        if (res) {
-          close();
-        }
-      });
+      if (!res) {
+        formError = "No se pudo crear el departamento.";
+        isLoading = false;
+        return;
+      }
+      close();
+      return;
     }
+
+    const headIdValue = Number(selectedHeadId);
+    const headId = headIdValue > 0 ? headIdValue : null;
+    const res = await updateDepartment(data.id as number, {
+      name: data.name,
+      code: data.code,
+      pricingId,
+      headId,
+    });
+
+    if (!res) {
+      formError = "No se pudo actualizar el departamento.";
+      isLoading = false;
+      return;
+    }
+
+    close();
   }
 </script>
 
 <Modal {title} bind:open outsideclose shadow rounded class="w-[50%]">
   <form class="items-center object-center">
+    {#if formError}
+      <Alert type="error" class="mb-3">{formError}</Alert>
+    {/if}
     <Label>Nombre</Label>
     <Input bind:value={data.name} placeholder="Nombre" />
     <Label>Codigo</Label>

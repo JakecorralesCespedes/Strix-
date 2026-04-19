@@ -27,6 +27,7 @@
 	const headers: TableHeader[] = [
 		{ name: "Nombre", field: "name" },
 		{ name: "Permisos", field: "allowedPermissions" },
+		{ name: "Acciones", field: "actions" },
 	];
 
 	async function loadRoles() {
@@ -122,9 +123,14 @@
 	{/if}
 
 	<Table data={roles} headers={headers} {pagination} on:next={nextPage} on:previous={previousPage}>
-		<TableBodyRow slot="row" let:row on:dblclick={() => openEdit(row)}>
+		<TableBodyRow slot="row" let:row>
 			<TableBodyCell>{row.name}</TableBodyCell>
 			<TableBodyCell>{row.allowedPermissions?.length ?? 0} permisos</TableBodyCell>
+			<TableBodyCell>
+				<Button size="xs" color="alternative" on:click={() => openEdit(row)}>
+					Editar
+				</Button>
+			</TableBodyCell>
 		</TableBodyRow>
 	</Table>
 </div>

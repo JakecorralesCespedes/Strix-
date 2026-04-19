@@ -13,6 +13,7 @@
   import {
     createWorkHours,
     getWorkHours,
+    updateWorkHours,
   } from "$lib/services/work-hours.service";
   import { getDepartment } from "$lib/services/department.service";
   import { getPeriods } from "$lib/services/period.service";
@@ -35,29 +36,36 @@
   let departments: Department[] = [];
   let periods: Period[] = [];
   let approvedStudents: StudentOnDepartment[] = [];
+  let approvedStudentsKey = "";
   let currentUser: User | null = null;
   let selectedDepartmentId: number | null = null;
   let selectedStudentFilterId: number | null = null;
   let selectedStudentId: number | null = null;
+  let selectedStudentRelationId: number | null = null;
   let selectedPeriodId: number | null = null;
   let statusFilter: "ALL" | "PENDING" | "APPROVED" | "REJECTED" = "ALL";
   let startDateFilter = "";
   let endDateFilter = "";
   let formOpen = false;
+  let formMode: "create" | "update" = "create";
+  let editingId: number | null = null;
   let formName = "Horas beca";
   let formStart = "";
   let formEnd = "";
   let formAmount = 0;
   let formPrice = 0;
   let formStatus: "PENDING" | "APPROVED" | "REJECTED" = "PENDING";
+  let assignedDepartmentLabel = "";
   let canViewFinancials = false;
   let canApprove = false;
+  let canWrite = false;
   let headers: TableHeader[] = [];
 
   $: canViewFinancials = hasAnyPermission(currentUser, [
     "work-hours.financials.read",
   ]);
   $: canApprove = hasAnyPermission(currentUser, ["work-hours.approve"]);
+  $: canWrite = hasAnyPermission(currentUser, ["work-hours.write"]);
 
   $: headers = [
     { name: "Estudiante", field: "studentName" },
@@ -72,6 +80,7 @@
         ]
       : []),
     { name: "Estado", field: "status" },
+    { name: "Acciones", field: "actions" },
   ];
 
   function mapHoursForDisplay(hours: WorkHours) {
@@ -191,15 +200,10 @@
   }
 
   async function loadApprovedStudents() {
-    if (!selectedDepartmentId) {
-      approvedStudents = [];
-      return;
-    }
-
     const res = await getScholarshipRequests({
       page: 1,
       size: 200,
-      departmentId: selectedDepartmentId,
+      departmentId: selectedDepartmentId ?? undefined,
       status: "APPROVED",
     });
 
@@ -207,6 +211,8 @@
   }
 
   function openForm() {
+    formMode = "create";
+    editingId = null;
     formOpen = true;
     formName = "Horas beca";
     formStart = "";
@@ -215,6 +221,44 @@
     formPrice = 0;
     formStatus = "PENDING";
     selectedStudentId = null;
+    selectedStudentRelationId = null;
+    assignedDepartmentLabel = "";
+    loadApprovedStudents();
+  }
+
+  function toLocalDateTimeInput(value: string | Date) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    const offset = date.getTimezoneOffset();
+    date.setMinutes(date.getMinutes() - offset);
+    return date.toISOString().slice(0, 16);
+  }
+
+  async function openEdit(row: WorkHours) {
+    if (!canWrite) {
+      return;
+    }
+    formMode = "update";
+    editingId = row.id;
+    formOpen = true;
+    formName = row.name ?? "Horas beca";
+    formStart = toLocalDateTimeInput(row.start);
+    formEnd = toLocalDateTimeInput(row.end);
+    formStatus = row.status ?? "PENDING";
+    selectedStudentId = row.studentId ?? null;
+    selectedDepartmentId = row.departmentId ?? selectedDepartmentId;
+    selectedPeriodId = row.periodId ?? selectedPeriodId;
+    selectedStudentRelationId = null;
+    assignedDepartmentLabel = row.department?.name ?? "";
+    await loadApprovedStudents();
+    const match = approvedStudents.find(
+      (item) =>
+        item.studentId === Number(row.studentId) &&
+        item.departmentId === Number(row.departmentId),
+    );
+    selectedStudentRelationId = match?.id ?? null;
   }
 
   function calculateAmount() {
@@ -251,7 +295,7 @@
       return;
     }
 
-    const created = await createWorkHours({
+    const payload = {
       name: formName,
       start: new Date(formStart).toISOString(),
       end: new Date(formEnd).toISOString(),
@@ -261,14 +305,24 @@
       studentId: Number(selectedStudentId),
       departmentId: Number(selectedDepartmentId),
       periodId: Number(selectedPeriodId),
-    });
+    };
 
-    if (!created) {
-      error = "No se pudieron registrar las horas.";
+    const saved =
+      formMode === "update" && editingId
+        ? await updateWorkHours(editingId, payload)
+        : await createWorkHours(payload);
+
+    if (!saved) {
+      error =
+        formMode === "update"
+          ? "No se pudieron actualizar las horas."
+          : "No se pudieron registrar las horas.";
       return;
     }
 
     formOpen = false;
+    formMode = "create";
+    editingId = null;
     await loadWorkHours();
   }
 
@@ -293,6 +347,37 @@
     formPrice = Number(currentDepartment?.pricing ?? 0);
   }
 
+  $: {
+    const key = `${selectedDepartmentId ?? "all"}-${currentUser?.id ?? "none"}`;
+    if (key !== approvedStudentsKey) {
+      approvedStudentsKey = key;
+      loadApprovedStudents();
+    }
+  }
+
+  $: {
+    if (selectedStudentRelationId) {
+      const relation = approvedStudents.find(
+        (item) => item.id === Number(selectedStudentRelationId),
+      );
+      if (relation) {
+        selectedStudentId = relation.studentId;
+        if (selectedDepartmentId !== relation.departmentId) {
+          selectedDepartmentId = relation.departmentId;
+        }
+        assignedDepartmentLabel =
+          relation.department?.name ?? `Dept ${relation.departmentId}`;
+      }
+    } else if (selectedDepartmentId) {
+      const currentDepartment = departments.find(
+        (department) => department.id === Number(selectedDepartmentId),
+      );
+      assignedDepartmentLabel = currentDepartment?.name ?? "";
+    } else {
+      assignedDepartmentLabel = "";
+    }
+  }
+
   $: if (!canApprove && formStatus !== "PENDING") {
     formStatus = "PENDING";
   }
@@ -302,7 +387,6 @@
     statusFilter;
     startDateFilter;
     endDateFilter;
-    loadApprovedStudents();
     loadWorkHours();
   }
 
@@ -321,7 +405,10 @@
   <div class="grid md:grid-cols-2 xl:grid-cols-6 gap-3">
     <div>
       <p class="text-sm text-gray-500">Departamento</p>
-      <Select bind:value={selectedDepartmentId}>
+      <Select
+        bind:value={selectedDepartmentId}
+        on:change={() => (selectedStudentRelationId = null)}
+      >
         <option value={""}>Selecciona un departamento</option>
         {#each departments as department}
           <option value={department.id}>{department.name}</option>
@@ -334,7 +421,8 @@
         <option value={""}>Todos</option>
         {#each approvedStudents as relation}
           <option value={relation.studentId}>
-            {relation.student?.name ?? `ID ${relation.studentId}`}
+            {relation.student?.name ?? `ID ${relation.studentId}`} -
+            {relation.department?.name ?? `Dept ${relation.departmentId}`}
           </option>
         {/each}
       </Select>
@@ -357,7 +445,9 @@
       <Input type="date" bind:value={endDateFilter} />
     </div>
     <div class="flex items-end gap-2 flex-wrap">
-      <Button color="primary" on:click={openForm}>Registrar horas</Button>
+      {#if canWrite}
+        <Button color="primary" on:click={openForm}>Registrar horas</Button>
+      {/if}
       <Button
         color="alternative"
         on:click={exportWorkHoursCsv}
@@ -414,15 +504,31 @@
           {row.status}
         </Badge>
       </td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm">
+        {#if canWrite}
+          <Button size="xs" color="alternative" on:click={() => openEdit(row)}>
+            Editar
+          </Button>
+        {:else}
+          -
+        {/if}
+      </td>
     </svelte:fragment>
   </Table>
 </div>
 
-<Modal title="Registrar horas beca" bind:open={formOpen} outsideclose>
+<Modal
+  title={formMode === "update" ? "Editar horas beca" : "Registrar horas beca"}
+  bind:open={formOpen}
+  outsideclose
+>
   <div class="grid gap-3">
     <div>
       <p class="text-sm text-gray-500">Departamento</p>
-      <Select bind:value={selectedDepartmentId}>
+      <Select
+        bind:value={selectedDepartmentId}
+        on:change={() => (selectedStudentRelationId = null)}
+      >
         <option value={""}>Selecciona un departamento</option>
         {#each departments as department}
           <option value={department.id}>{department.name}</option>
@@ -431,14 +537,19 @@
     </div>
     <div>
       <p class="text-sm text-gray-500">Estudiante</p>
-      <Select bind:value={selectedStudentId}>
+      <Select bind:value={selectedStudentRelationId}>
         <option value={""}>Selecciona un estudiante</option>
         {#each approvedStudents as relation}
-          <option value={relation.studentId}>
-            {relation.student?.name ?? `ID ${relation.studentId}`}
+          <option value={relation.id}>
+            {relation.student?.name ?? `ID ${relation.studentId}`} -
+            {relation.department?.name ?? `Dept ${relation.departmentId}`}
           </option>
         {/each}
       </Select>
+    </div>
+    <div>
+      <p class="text-sm text-gray-500">Departamento asignado</p>
+      <Input value={assignedDepartmentLabel || "-"} readonly />
     </div>
     <div>
       <p class="text-sm text-gray-500">Periodo</p>
@@ -484,7 +595,9 @@
   </div>
 
   <svelte:fragment slot="footer">
-    <Button color="primary" on:click={handleSave}>Guardar</Button>
+    <Button color="primary" on:click={handleSave}>
+      {formMode === "update" ? "Actualizar" : "Guardar"}
+    </Button>
     <Button color="alternative" on:click={() => (formOpen = false)}>Cerrar</Button>
   </svelte:fragment>
 </Modal>

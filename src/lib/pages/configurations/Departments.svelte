@@ -26,6 +26,7 @@
     { name: "Codigo", field: "code" },
     { name: "Precio", field: "pricing" },
     { name: "Jefe", field: "head" },
+    { name: "Acciones", field: "actions" },
   ];
 
   async function loadDepartments() {
@@ -114,11 +115,16 @@
     on:next={nextPage}
     on:previous={previousPage}
   >
-    <TableBodyRow slot="row" let:row on:dblclick={() => handleEdit(row)}>
+    <TableBodyRow slot="row" let:row>
       <TableBodyCell>{row.name}</TableBodyCell>
       <TableBodyCell>{row.code}</TableBodyCell>
       <TableBodyCell>{row.pricing ?? "-"}</TableBodyCell>
       <TableBodyCell>{row.head?.name ?? "-"}</TableBodyCell>
+      <TableBodyCell>
+        <Button size="xs" color="alternative" on:click={() => handleEdit(row)}>
+          Editar
+        </Button>
+      </TableBodyCell>
     </TableBodyRow>
   </Table>
 

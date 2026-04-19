@@ -1,12 +1,23 @@
 <script lang="ts">
-	import { Alert, Button, Heading, Label, Modal, Select, Spinner } from "flowbite-svelte";
+	import {
+		Alert,
+		Button,
+		Heading,
+		Label,
+		Modal,
+		Select,
+		Spinner,
+		TableBodyCell,
+		TableBodyRow,
+	} from "flowbite-svelte";
 	import { onMount } from "svelte";
 	import { get } from "svelte/store";
 	import Table from "$lib/components/Table.svelte";
 	import { createPeriod, getPeriods, updatePeriod } from "$lib/services/period.service";
 	import { exportPeriodsToExcel, exportPeriodsToPdf } from "$lib/utils/period-export";
-	import { authReady } from "$stores/user.store";
-	import type { Period, TableHeader, TablePagination } from "$lib/types";
+	import { authReady, userStore } from "$stores/user.store";
+	import { hasAnyPermission } from "$lib/utils/permissions";
+	import type { Period, TableHeader, TablePagination, User } from "$lib/types";
 
 	let periods: Period[] = [];
 	let error: string | null = null;
@@ -26,6 +37,14 @@
 		end: "",
 	};
 	let formSaving = false;
+	let currentUser: User | null = null;
+	let canWrite = false;
+	userStore.subscribe((value) => {
+		currentUser = value.dbUser ?? null;
+	});
+
+	$: canWrite = hasAnyPermission(currentUser, ["periods.write"]);
+
 
 	const headers: TableHeader[] = [
 		{ name: "Nombre", field: "name" },
@@ -40,6 +59,7 @@
 			formatter: (value: string | Date) => new Date(value).toLocaleDateString(),
 		},
 		{ name: "Estado", field: "status" },
+		{ name: "Acciones", field: "actions" },
 	];
 
 	async function loadPeriods() {
@@ -76,6 +96,10 @@
 	}
 
 	function openCreateForm() {
+		if (!canWrite) {
+			error = "No tienes permisos para crear periodos.";
+			return;
+		}
 		formMode = "create";
 		resetForm();
 		error = null;
@@ -83,6 +107,10 @@
 	}
 
 	function openEditForm(period: Period) {
+		if (!canWrite) {
+			error = "No tienes permisos para editar periodos.";
+			return;
+		}
 		formMode = "update";
 		selectedPeriodIdForEdit = period.id;
 		formData = {
@@ -95,6 +123,10 @@
 	}
 
 	async function savePeriod() {
+		if (!canWrite) {
+			error = "No tienes permisos para guardar periodos.";
+			return;
+		}
 		if (!formData.name.trim() || !formData.start || !formData.end) {
 			error = "Completa nombre, fecha de inicio y fecha de fin.";
 			return;
@@ -262,7 +294,9 @@
 	<div class="flex items-center justify-between gap-3">
 		<Heading tag="h3" class="mb-2">Configuracion de Periodos</Heading>
 		<div class="flex gap-2">
-			<Button size="sm" color="alternative" on:click={openCreateForm}>Nuevo periodo</Button>
+			{#if canWrite}
+				<Button size="sm" color="alternative" on:click={openCreateForm}>Nuevo periodo</Button>
+			{/if}
 			<Button size="sm" color="primary" on:click={openExportModal} disabled={exportingPdf || exportingExcel}>
 				Descargar reporte
 				{#if exportingPdf || exportingExcel}
@@ -276,14 +310,23 @@
 		<Alert type="error" dismissable>{error}</Alert>
 	{/if}
 
-	<Table
-		data={periods}
-		headers={headers}
-		{pagination}
-		on:next={nextPage}
-		on:previous={previousPage}
-		on:rowClick={(event) => openEditForm(event.detail)}
-	/>
+	<Table data={periods} headers={headers} {pagination} on:next={nextPage} on:previous={previousPage}>
+		<TableBodyRow slot="row" let:row>
+			<TableBodyCell>{row.name}</TableBodyCell>
+			<TableBodyCell>{new Date(row.start).toLocaleDateString()}</TableBodyCell>
+			<TableBodyCell>{new Date(row.end).toLocaleDateString()}</TableBodyCell>
+			<TableBodyCell>{row.status}</TableBodyCell>
+			<TableBodyCell>
+				{#if canWrite}
+					<Button size="xs" color="alternative" on:click={() => openEditForm(row)}>
+						Editar
+					</Button>
+				{:else}
+					-
+				{/if}
+			</TableBodyCell>
+		</TableBodyRow>
+	</Table>
 </div>
 
 <Modal

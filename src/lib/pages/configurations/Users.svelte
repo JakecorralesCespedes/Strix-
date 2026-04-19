@@ -33,6 +33,7 @@
 		{ name: "Telefono", field: "phone" },
 		{ name: "Rol", field: "role" },
 		{ name: "Departamento", field: "department" },
+		{ name: "Acciones", field: "actions" },
 	];
 
 	async function loadUsers() {
@@ -130,12 +131,17 @@
 	{/if}
 
 	<Table data={users} headers={headers} {pagination} on:next={nextPage} on:previous={previousPage}>
-		<TableBodyRow slot="row" let:row on:dblclick={() => openEdit(row)}>
+		<TableBodyRow slot="row" let:row>
 			<TableBodyCell>{row.name}</TableBodyCell>
 			<TableBodyCell>{row.email}</TableBodyCell>
 			<TableBodyCell>{row.phone}</TableBodyCell>
 			<TableBodyCell>{row.role?.name ?? "-"}</TableBodyCell>
 			<TableBodyCell>{row.department?.name ?? "-"}</TableBodyCell>
+			<TableBodyCell>
+				<Button size="xs" color="alternative" on:click={() => openEdit(row)}>
+					Editar
+				</Button>
+			</TableBodyCell>
 		</TableBodyRow>
 	</Table>
 </div>

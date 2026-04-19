@@ -32,6 +32,7 @@
     { name: "Estudiante", field: "student" },
     { name: "Departamento", field: "department" },
     { name: "Estado", field: "status" },
+    { name: "Acciones", field: "actions" },
   ];
 
   function getBadgeColor(status: string) {
@@ -166,20 +167,18 @@
     <Alert type="error" dismissable>{error}</Alert>
   {/if}
 
-  <Table
-    data={requests}
-    headers={headers}
-    {pagination}
-    on:next={nextPage}
-    on:previous={previousPage}
-    on:rowClick={(event) => openDetails(event.detail)}
-  >
+  <Table data={requests} headers={headers} {pagination} on:next={nextPage} on:previous={previousPage}>
     <TableBodyRow slot="row" let:row>
       <TableBodyCell>{row.id}</TableBodyCell>
       <TableBodyCell>{row.student?.name ?? "-"}</TableBodyCell>
       <TableBodyCell>{row.department?.name ?? "-"}</TableBodyCell>
       <TableBodyCell>
         <Badge color={getBadgeColor(row.status)}>{row.status}</Badge>
+      </TableBodyCell>
+      <TableBodyCell>
+        <Button size="xs" color="alternative" on:click={() => openDetails(row)}>
+          Editar
+        </Button>
       </TableBodyCell>
     </TableBodyRow>
   </Table>

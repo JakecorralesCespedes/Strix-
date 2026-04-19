@@ -24,6 +24,7 @@
 		{ name: "ID", field: "id" },
 		{ name: "Precio", field: "price" },
 		{ name: "Estado", field: "active" },
+		{ name: "Acciones", field: "actions" },
 	];
 
 	async function loadPricing() {
@@ -74,11 +75,16 @@
 	{/if}
 
 	<Table data={pricingList} headers={headers}>
-		<TableBodyRow slot="row" let:row class="cursor-pointer" on:dblclick={() => openEdit(row)}>
+		<TableBodyRow slot="row" let:row>
 			<TableBodyCell>{row.id}</TableBodyCell>
 			<TableBodyCell>{row.price}</TableBodyCell>
 			<TableBodyCell>
 				<Badge color={row.active ? "green" : "red"}>{row.active ? "Activo" : "Inactivo"}</Badge>
+			</TableBodyCell>
+			<TableBodyCell>
+				<Button size="xs" color="alternative" on:click={() => openEdit(row)}>
+					Editar
+				</Button>
 			</TableBodyCell>
 		</TableBodyRow>
 	</Table>

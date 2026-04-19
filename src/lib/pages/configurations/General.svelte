@@ -44,6 +44,7 @@
     { name: "Email", field: "email" },
     { name: "Nombre", field: "name" },
     { name: "Estado", field: "state" },
+    { name: "Acciones", field: "actions" },
   ];
 
   async function reloadConfig() {
@@ -171,17 +172,18 @@
       on:next={handleNext}
       on:previous={handlePrevious}
     >
-      <TableBodyRow
-        slot="row"
-        let:row
-        on:dblclick={() => handleUpdateModal(row)}
-      >
+      <TableBodyRow slot="row" let:row>
         <TableBodyCell>{row.email}</TableBodyCell>
         <TableBodyCell>{row.name}</TableBodyCell>
         <TableBodyCell>
           <Badge color={row.active ? "green" : "red"}
             >{row.active ? "Activo" : "Inactivo"}</Badge
           >
+        </TableBodyCell>
+        <TableBodyCell>
+          <Button size="xs" color="alternative" on:click={() => handleUpdateModal(row)}>
+            Editar
+          </Button>
         </TableBodyCell>
       </TableBodyRow>
     </Table>

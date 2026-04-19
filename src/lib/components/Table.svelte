@@ -23,9 +23,6 @@
   export let data: TableData<any> = [];
   export let loading = false;
 
-  function handleRowClick(data: any) {
-    dispatch("rowClick", data);
-  }
   function previous() {
     dispatch("previous");
   }
@@ -54,10 +51,7 @@
     {:else}
       {#each data as row}
         <slot name="row" {row}>
-          <TableBodyRow
-            class="cursor-pointer"
-            on:dblclick={() => handleRowClick(row)}
-          >
+          <TableBodyRow>
             {#each headers as { field, formatter }}
               <TableBodyCell>
                 {#if formatter}

@@ -15,6 +15,12 @@ export type UpdateScholarshipRequestBody = {
   departmentId?: number;
 };
 
+export type CreateScholarshipRequestBody = {
+  departmentId: number;
+  studentId: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+};
+
 export async function getScholarshipRequests(query?: PaginationQuery) {
   try {
     const result = await api.get<ApiPagination<StudentOnDepartment>>(
@@ -40,6 +46,17 @@ export async function updateScholarshipRequest(
       data,
     );
 
+    return result.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function createScholarshipRequest(
+  data: CreateScholarshipRequestBody,
+) {
+  try {
+    const result = await api.post<StudentOnDepartment>(DEFAULT_ENDPOINT, data);
     return result.data;
   } catch (error) {
     return null;

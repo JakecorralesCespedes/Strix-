@@ -30,3 +30,19 @@ export async function updateConfig(data: GlobalSetting) {
     return null;
   }
 }
+
+export type SmtpStatus = {
+  configured: boolean;
+  requiredEnvVars: string[];
+  optionalEnvVars: string[];
+  note: string;
+};
+
+export async function getSmtpStatus(): Promise<SmtpStatus | null> {
+  try {
+    const result = await api.get<SmtpStatus>(`${DEFAULT_ENDPOINT}/smtp-status`);
+    return result.data;
+  } catch {
+    return null;
+  }
+}

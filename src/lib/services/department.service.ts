@@ -14,6 +14,7 @@ export type DepartmentPayload = {
   name: string;
   code: string;
   pricingId?: number;
+  pricing?: number;
   headId?: number | null;
 };
 

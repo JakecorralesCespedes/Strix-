@@ -8,10 +8,9 @@
     Select,
     Spinner,
   } from "flowbite-svelte";
-  import type { Department, Pricing, User } from "../types";
+  import type { Department, User } from "../types";
 
   import { createEventDispatcher, onMount } from "svelte";
-  import { getPricing } from "../services/pricing.service";
   import { getUsers } from "../services/user.service";
   import {
     createDepartment,
@@ -24,15 +23,15 @@
   export let data: Department = {
     name: "",
     code: "",
-    pricingId: 0,
+    pricing: 0,
     headId: null,
   };
-  let pricingList: Array<Pricing> | undefined = [];
   let userOptions: User[] = [];
   let availableHeads: User[] = [];
   let selectedHeadId: number | string | null = null;
   let headInitialized = false;
   let currentDepartmentId: number | null = null;
+  let directPrice: number = 0;
   let isLoading = false;
   let formError: string | null = null;
 
@@ -41,11 +40,7 @@
     : "Actualizar Departamento";
 
   onMount(async () => {
-    const [pricingRes, usersRes] = await Promise.all([
-      getPricing(),
-      getUsers({ page: 1, size: 200 }),
-    ]);
-    pricingList = pricingRes ?? [];
+    const usersRes = await getUsers({ page: 1, size: 200 });
     userOptions = usersRes?.data ?? [];
   });
 
@@ -66,33 +61,34 @@
     if (data.id !== currentDepartmentId || !headInitialized) {
       currentDepartmentId = data.id;
       selectedHeadId = data.headId ?? data.head?.id ?? 0;
+      directPrice = typeof data.pricing === "number" ? data.pricing : 0;
       headInitialized = true;
     }
   }
 
   $: if (open && formMode === "create" && !headInitialized) {
     selectedHeadId = 0;
+    directPrice = 0;
     headInitialized = true;
   }
+
   function close() {
     dispatch("close");
     open = false;
     isLoading = false;
     formError = null;
   }
+
   async function handleSubmit() {
     formError = null;
     isLoading = true;
-    const pricingIdValue = Number(data.pricingId);
-    const pricingId = Number.isFinite(pricingIdValue) && pricingIdValue > 0
-      ? pricingIdValue
-      : undefined;
+    const price = Number(directPrice);
 
     if (formMode === "create") {
       const res = await createDepartment({
         name: data.name,
         code: data.code,
-        pricingId,
+        pricing: Number.isFinite(price) ? price : 0,
       });
       if (!res) {
         formError = "No se pudo crear el departamento.";
@@ -108,7 +104,7 @@
     const res = await updateDepartment(data.id as number, {
       name: data.name,
       code: data.code,
-      pricingId,
+      pricing: Number.isFinite(price) ? price : 0,
       headId,
     });
 
@@ -131,16 +127,14 @@
     <Input bind:value={data.name} placeholder="Nombre" />
     <Label>Codigo</Label>
     <Input bind:value={data.code} placeholder="Codigo" />
-    <Label>Precio</Label>
-    <Select label="Precio" bind:value={data.pricingId}>
-      {#if pricingList}
-        {#each pricingList as pricing}
-          <option value={pricing.id}>{pricing.price}</option>
-        {/each}
-      {:else}
-        <option value={0}>Cargando...</option>
-      {/if}
-    </Select>
+    <Label>Precio por hora (RD$)</Label>
+    <Input
+      type="number"
+      bind:value={directPrice}
+      min="0"
+      step="0.01"
+      placeholder="0.00"
+    />
     {#if formMode === "update"}
       <Label>Jefe de departamento</Label>
       <Select label="Jefe" bind:value={selectedHeadId}>

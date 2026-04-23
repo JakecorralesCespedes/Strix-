@@ -3,6 +3,7 @@
     Alert,
     Badge,
     Button,
+    Checkbox,
     Heading,
     Input,
     Modal,
@@ -18,11 +19,13 @@
   import { getDepartment } from "$lib/services/department.service";
   import { getPeriods } from "$lib/services/period.service";
   import { getScholarshipRequests } from "$lib/services/scholarship-request.service";
+  import { getStudents } from "$lib/services/student.service";
   import { hasAnyPermission } from "$lib/utils/permissions";
   import { userStore } from "../../stores/user.store";
   import type {
     Department,
     Period,
+    Student,
     StudentOnDepartment,
     TableHeader,
     TablePagination,
@@ -37,11 +40,13 @@
   let periods: Period[] = [];
   let approvedStudents: StudentOnDepartment[] = [];
   let approvedStudentsKey = "";
+  let allStudents: Student[] = [];
   let currentUser: User | null = null;
   let selectedDepartmentId: number | null = null;
   let selectedStudentFilterId: number | null = null;
   let selectedStudentId: number | null = null;
   let selectedStudentRelationId: number | null = null;
+  let selectedAdditionalStudentId: number | null = null;
   let selectedPeriodId: number | null = null;
   let statusFilter: "ALL" | "PENDING" | "APPROVED" | "REJECTED" = "ALL";
   let startDateFilter = "";
@@ -55,17 +60,29 @@
   let formAmount = 0;
   let formPrice = 0;
   let formStatus: "PENDING" | "APPROVED" | "REJECTED" = "PENDING";
+  let formIsAdditional = false;
+  let additionalStudentSearch = "";
   let assignedDepartmentLabel = "";
   let canViewFinancials = false;
   let canApprove = false;
   let canWrite = false;
   let headers: TableHeader[] = [];
 
-  $: canViewFinancials = hasAnyPermission(currentUser, [
-    "work-hours.financials.read",
-  ]);
-  $: canApprove = hasAnyPermission(currentUser, ["work-hours.approve"]);
-  $: canWrite = hasAnyPermission(currentUser, ["work-hours.write"]);
+  $: canViewFinancials = hasAnyPermission(
+    currentUser,
+    ["work-hours.financials.read"],
+    selectedDepartmentId,
+  );
+  $: canApprove = hasAnyPermission(
+    currentUser,
+    ["work-hours.approve"],
+    selectedDepartmentId,
+  );
+  $: canWrite = hasAnyPermission(
+    currentUser,
+    ["work-hours.write"],
+    selectedDepartmentId,
+  );
 
   $: headers = [
     { name: "Estudiante", field: "studentName" },
@@ -79,6 +96,7 @@
           { name: "Total", field: "total" },
         ]
       : []),
+    { name: "Tipo", field: "type" },
     { name: "Estado", field: "status" },
     { name: "Acciones", field: "actions" },
   ];
@@ -92,19 +110,13 @@
   }
 
   function getBadgeColor(status: string) {
-    if (status === "APPROVED") {
-      return "green";
-    }
-    if (status === "REJECTED") {
-      return "red";
-    }
+    if (status === "APPROVED") return "green";
+    if (status === "REJECTED") return "red";
     return "yellow";
   }
 
   function buildCsvValue(value: unknown) {
-    if (value === null || value === undefined) {
-      return "";
-    }
+    if (value === null || value === undefined) return "";
     const text = String(value);
     if (text.includes(",") || text.includes("\n") || text.includes('"')) {
       return `"${text.replace(/"/g, '""')}"`;
@@ -118,12 +130,13 @@
       return;
     }
 
-    const headers = [
+    const csvHeaders = [
       "Estudiante",
       "Departamento",
       "Entrada",
       "Salida",
       ...(canViewFinancials ? ["Horas", "Precio", "Total"] : []),
+      "Tipo",
       "Estado",
     ];
 
@@ -135,10 +148,11 @@
       ...(canViewFinancials
         ? [row.amount ?? "", row.price ?? "", row.total ?? ""]
         : []),
+      row.isAdditional ? "Adicional" : "Asignado",
       row.status,
     ]);
 
-    const csv = [headers, ...rows]
+    const csv = [csvHeaders, ...rows]
       .map((row) => row.map(buildCsvValue).join(","))
       .join("\n");
 
@@ -186,8 +200,12 @@
     const res = await getDepartment({ page: 1, size: 200 });
     departments = res?.data ?? [];
 
-    if (!selectedDepartmentId && currentUser?.departmentId) {
-      selectedDepartmentId = currentUser.departmentId;
+    if (!selectedDepartmentId) {
+      if (currentUser?.departmentId) {
+        selectedDepartmentId = currentUser.departmentId;
+      } else if (currentUser?.departmentRoles?.length) {
+        selectedDepartmentId = currentUser.departmentRoles[0]?.departmentId ?? null;
+      }
     }
   }
 
@@ -206,8 +224,12 @@
       departmentId: selectedDepartmentId ?? undefined,
       status: "APPROVED",
     });
-
     approvedStudents = res?.data ?? [];
+  }
+
+  async function loadAllStudents(search?: string) {
+    const res = await getStudents({ page: 1, size: 200, search });
+    allStudents = res?.data ?? [];
   }
 
   function openForm() {
@@ -220,26 +242,25 @@
     formAmount = 0;
     formPrice = 0;
     formStatus = "PENDING";
+    formIsAdditional = false;
     selectedStudentId = null;
     selectedStudentRelationId = null;
+    selectedAdditionalStudentId = null;
+    additionalStudentSearch = "";
     assignedDepartmentLabel = "";
     loadApprovedStudents();
   }
 
   function toLocalDateTimeInput(value: string | Date) {
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
+    if (Number.isNaN(date.getTime())) return "";
     const offset = date.getTimezoneOffset();
     date.setMinutes(date.getMinutes() - offset);
     return date.toISOString().slice(0, 16);
   }
 
   async function openEdit(row: WorkHours) {
-    if (!canWrite) {
-      return;
-    }
+    if (!canWrite) return;
     formMode = "update";
     editingId = row.id;
     formOpen = true;
@@ -247,18 +268,25 @@
     formStart = toLocalDateTimeInput(row.start);
     formEnd = toLocalDateTimeInput(row.end);
     formStatus = row.status ?? "PENDING";
+    formIsAdditional = row.isAdditional ?? false;
     selectedStudentId = row.studentId ?? null;
     selectedDepartmentId = row.departmentId ?? selectedDepartmentId;
     selectedPeriodId = row.periodId ?? selectedPeriodId;
     selectedStudentRelationId = null;
+    selectedAdditionalStudentId = row.isAdditional ? row.studentId : null;
+    additionalStudentSearch = "";
     assignedDepartmentLabel = row.department?.name ?? "";
     await loadApprovedStudents();
-    const match = approvedStudents.find(
-      (item) =>
-        item.studentId === Number(row.studentId) &&
-        item.departmentId === Number(row.departmentId),
-    );
-    selectedStudentRelationId = match?.id ?? null;
+    if (!row.isAdditional) {
+      const match = approvedStudents.find(
+        (item) =>
+          item.studentId === Number(row.studentId) &&
+          item.departmentId === Number(row.departmentId),
+      );
+      selectedStudentRelationId = match?.id ?? null;
+    } else {
+      await loadAllStudents();
+    }
   }
 
   function calculateAmount() {
@@ -266,22 +294,19 @@
       formAmount = 0;
       return;
     }
-
     const startDate = new Date(formStart);
     const endDate = new Date(formEnd);
     const diffMs = endDate.getTime() - startDate.getTime();
-
     if (diffMs <= 0) {
       formAmount = 0;
       return;
     }
-
     formAmount = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
   }
 
   async function handleSave() {
-    if (!selectedDepartmentId || !selectedStudentId || !selectedPeriodId) {
-      error = "Selecciona departamento, estudiante y periodo.";
+    if (!selectedDepartmentId || !selectedPeriodId) {
+      error = "Selecciona departamento y periodo.";
       return;
     }
 
@@ -290,8 +315,12 @@
       return;
     }
 
-    if (canViewFinancials && formPrice <= 0) {
-      error = "Completa el precio por hora.";
+    const resolvedStudentId = formIsAdditional
+      ? Number(selectedAdditionalStudentId)
+      : Number(selectedStudentId);
+
+    if (!resolvedStudentId) {
+      error = "Selecciona un estudiante.";
       return;
     }
 
@@ -301,10 +330,11 @@
       end: new Date(formEnd).toISOString(),
       amount: canViewFinancials ? formAmount : undefined,
       price: canViewFinancials ? formPrice : undefined,
-      status: canApprove ? formStatus : undefined,
-      studentId: Number(selectedStudentId),
+      status: undefined as "PENDING" | "APPROVED" | "REJECTED" | undefined,
+      studentId: resolvedStudentId,
       departmentId: Number(selectedDepartmentId),
       periodId: Number(selectedPeriodId),
+      isAdditional: formIsAdditional,
     };
 
     const saved =
@@ -342,7 +372,7 @@
 
   $: if (selectedDepartmentId) {
     const currentDepartment = departments.find(
-      (department) => department.id === Number(selectedDepartmentId),
+      (d) => d.id === Number(selectedDepartmentId),
     );
     formPrice = Number(currentDepartment?.pricing ?? 0);
   }
@@ -356,7 +386,7 @@
   }
 
   $: {
-    if (selectedStudentRelationId) {
+    if (!formIsAdditional && selectedStudentRelationId) {
       const relation = approvedStudents.find(
         (item) => item.id === Number(selectedStudentRelationId),
       );
@@ -370,7 +400,7 @@
       }
     } else if (selectedDepartmentId) {
       const currentDepartment = departments.find(
-        (department) => department.id === Number(selectedDepartmentId),
+        (d) => d.id === Number(selectedDepartmentId),
       );
       assignedDepartmentLabel = currentDepartment?.name ?? "";
     } else {
@@ -378,8 +408,8 @@
     }
   }
 
-  $: if (!canApprove && formStatus !== "PENDING") {
-    formStatus = "PENDING";
+  $: if (formIsAdditional && formOpen) {
+    loadAllStudents(additionalStudentSearch || undefined);
   }
 
   $: if (selectedDepartmentId) {
@@ -451,11 +481,12 @@
       <Button
         color="alternative"
         on:click={exportWorkHoursCsv}
-        disabled={!workHours.length}
-        >Exportar CSV</Button
+        disabled={!workHours.length}>Exportar CSV</Button
       >
-      <Button color="alternative" on:click={handlePrint} disabled={!workHours.length}
-        >Imprimir</Button
+      <Button
+        color="alternative"
+        on:click={handlePrint}
+        disabled={!workHours.length}>Imprimir</Button
       >
     </div>
   </div>
@@ -500,6 +531,11 @@
         </td>
       {/if}
       <td class="px-6 py-4 whitespace-nowrap text-sm">
+        <Badge color={row.isAdditional ? "purple" : "blue"}>
+          {row.isAdditional ? "Adicional" : "Asignado"}
+        </Badge>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm">
         <Badge color={getBadgeColor(row.status)}>
           {row.status}
         </Badge>
@@ -535,22 +571,55 @@
         {/each}
       </Select>
     </div>
-    <div>
-      <p class="text-sm text-gray-500">Estudiante</p>
-      <Select bind:value={selectedStudentRelationId}>
-        <option value={""}>Selecciona un estudiante</option>
-        {#each approvedStudents as relation}
-          <option value={relation.id}>
-            {relation.student?.name ?? `ID ${relation.studentId}`} -
-            {relation.department?.name ?? `Dept ${relation.departmentId}`}
-          </option>
-        {/each}
-      </Select>
+
+    <div class="flex items-center gap-2">
+      <Checkbox bind:checked={formIsAdditional} />
+      <p class="text-sm text-gray-700">
+        Estudiante adicional (no asignado a este departamento)
+      </p>
     </div>
-    <div>
-      <p class="text-sm text-gray-500">Departamento asignado</p>
-      <Input value={assignedDepartmentLabel || "-"} readonly />
-    </div>
+
+    {#if formIsAdditional}
+      <div>
+        <p class="text-sm text-gray-500">Buscar estudiante</p>
+        <div class="flex gap-2">
+          <Input
+            bind:value={additionalStudentSearch}
+            placeholder="Nombre o carnet"
+            on:input={() => loadAllStudents(additionalStudentSearch || undefined)}
+          />
+        </div>
+      </div>
+      <div>
+        <p class="text-sm text-gray-500">Estudiante adicional</p>
+        <Select bind:value={selectedAdditionalStudentId}>
+          <option value={""}>Selecciona un estudiante</option>
+          {#each allStudents as student}
+            <option value={student.id}>
+              {student.name} - {student.code}
+            </option>
+          {/each}
+        </Select>
+      </div>
+    {:else}
+      <div>
+        <p class="text-sm text-gray-500">Estudiante asignado</p>
+        <Select bind:value={selectedStudentRelationId}>
+          <option value={""}>Selecciona un estudiante</option>
+          {#each approvedStudents as relation}
+            <option value={relation.id}>
+              {relation.student?.name ?? `ID ${relation.studentId}`} -
+              {relation.department?.name ?? `Dept ${relation.departmentId}`}
+            </option>
+          {/each}
+        </Select>
+      </div>
+      <div>
+        <p class="text-sm text-gray-500">Departamento asignado</p>
+        <Input value={assignedDepartmentLabel || "-"} readonly />
+      </div>
+    {/if}
+
     <div>
       <p class="text-sm text-gray-500">Periodo</p>
       <Select bind:value={selectedPeriodId}>
@@ -591,6 +660,10 @@
           <option value="REJECTED">REJECTED</option>
         </Select>
       </div>
+    {:else}
+      <p class="text-xs text-gray-400">
+        Las horas se registran como pendientes para verificación del jefe de departamento.
+      </p>
     {/if}
   </div>
 

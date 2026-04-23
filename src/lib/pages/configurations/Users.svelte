@@ -24,8 +24,11 @@
 	let departmentOptions: Department[] = [];
 	let editOpen = false;
 	let selectedUser: User | null = null;
-	let selectedRoleId: number | null = null;
-	let selectedDepartmentId: number | null = null;
+	let departmentAssignments: Array<{
+		departmentId: number | null;
+		roleId: number | null;
+	}> = [];
+	let activeDepartmentId: number | null = null;
 
 	const headers: TableHeader[] = [
 		{ name: "Nombre", field: "name" },
@@ -82,23 +85,74 @@
 
 	function openEdit(user: User) {
 		selectedUser = user;
-		selectedRoleId = user.roleId ?? user.role?.id ?? null;
-		selectedDepartmentId = user.departmentId ?? user.department?.id ?? null;
+		departmentAssignments = (user.departmentRoles?.length
+			? user.departmentRoles.map((item) => ({
+					departmentId: item.departmentId,
+					roleId: item.roleId,
+				}))
+			: [
+					{
+						departmentId: user.departmentId ?? null,
+						roleId: user.roleId ?? null,
+					},
+				]
+		).filter((item) => item.departmentId || item.roleId);
+		if (!departmentAssignments.length) {
+			departmentAssignments = [{ departmentId: null, roleId: null }];
+		}
+		activeDepartmentId =
+			user.departmentId ?? departmentAssignments[0]?.departmentId ?? null;
 		editOpen = true;
 	}
 
-	async function handleSave() {
-		const roleId = Number(selectedRoleId);
-		const departmentId = Number(selectedDepartmentId);
+	function addAssignment() {
+		departmentAssignments = [
+			...departmentAssignments,
+			{ departmentId: null, roleId: null },
+		];
+	}
 
-		if (!selectedUser || !roleId || !departmentId) {
-			error = "Debes seleccionar rol y departamento.";
+	function removeAssignment(index: number) {
+		departmentAssignments = departmentAssignments.filter(
+			(_, idx) => idx !== index,
+		);
+		if (!departmentAssignments.length) {
+			departmentAssignments = [{ departmentId: null, roleId: null }];
+		}
+		if (
+			activeDepartmentId &&
+			!departmentAssignments.some(
+				(item) => item.departmentId === activeDepartmentId,
+			)
+		) {
+			activeDepartmentId = departmentAssignments[0]?.departmentId ?? null;
+		}
+	}
+
+	async function handleSave() {
+		if (!selectedUser) {
 			return;
 		}
 
+		const assignments = departmentAssignments
+			.filter((item) => item.departmentId && item.roleId)
+			.map((item) => ({
+				departmentId: Number(item.departmentId),
+				roleId: Number(item.roleId),
+			}));
+
+		if (!assignments.length) {
+			error = "Debes agregar al menos un departamento con rol.";
+			return;
+		}
+
+		const nextActiveDepartmentId = Number(
+			activeDepartmentId ?? assignments[0]?.departmentId,
+		);
+
 		const updated = await updateUser(selectedUser.id, {
-			roleId,
-			departmentId,
+			departmentRoles: assignments,
+			activeDepartmentId: nextActiveDepartmentId,
 		});
 
 		if (!updated) {
@@ -108,8 +162,8 @@
 
 		editOpen = false;
 		selectedUser = null;
-		selectedRoleId = null;
-		selectedDepartmentId = null;
+		departmentAssignments = [];
+		activeDepartmentId = null;
 		loadUsers();
 	}
 
@@ -146,7 +200,8 @@
 	</Table>
 </div>
 
-<Modal title="Asignar rol y departamento" bind:open={editOpen} outsideclose>
+
+<Modal title="Asignar roles por departamento" bind:open={editOpen} outsideclose>
 	{#if selectedUser}
 		<div class="grid gap-4">
 			<div>
@@ -154,22 +209,56 @@
 				<p class="font-medium">{selectedUser.name} ({selectedUser.email})</p>
 			</div>
 			<div>
-				<p class="text-sm text-gray-500">Rol</p>
-				<Select bind:value={selectedRoleId}>
-					<option value={""}>Selecciona un rol</option>
-					{#each roleOptions as role}
-						<option value={role.id}>{role.name}</option>
+				<p class="text-sm text-gray-500">Departamento activo</p>
+				<Select bind:value={activeDepartmentId}>
+					<option value={""}>Selecciona un departamento</option>
+					{#each departmentAssignments as assignment}
+						{#if assignment.departmentId}
+							<option value={assignment.departmentId}>
+								{departmentOptions.find(
+									(department) =>
+										department.id === Number(assignment.departmentId),
+									)?.name ?? `Departamento ${assignment.departmentId}`}
+							</option>
+						{/if}
 					{/each}
 				</Select>
 			</div>
-			<div>
-				<p class="text-sm text-gray-500">Departamento</p>
-				<Select bind:value={selectedDepartmentId}>
-					<option value={""}>Selecciona un departamento</option>
-					{#each departmentOptions as department}
-						<option value={department.id}>{department.name}</option>
-					{/each}
-				</Select>
+			<div class="grid gap-3">
+				{#each departmentAssignments as assignment, index}
+					<div class="grid gap-2 md:grid-cols-[1fr_1fr_auto] items-end">
+						<div>
+							<p class="text-sm text-gray-500">Departamento</p>
+							<Select bind:value={assignment.departmentId}>
+								<option value={""}>Selecciona un departamento</option>
+								{#each departmentOptions as department}
+									<option value={department.id}>{department.name}</option>
+								{/each}
+							</Select>
+						</div>
+						<div>
+							<p class="text-sm text-gray-500">Rol</p>
+							<Select bind:value={assignment.roleId}>
+								<option value={""}>Selecciona un rol</option>
+								{#each roleOptions as role}
+									<option value={role.id}>{role.name}</option>
+								{/each}
+							</Select>
+						</div>
+						<div>
+							<Button
+								size="xs"
+								color="alternative"
+								on:click={() => removeAssignment(index)}
+							>
+								Quitar
+							</Button>
+						</div>
+					</div>
+				{/each}
+				<Button size="sm" color="primary" on:click={addAssignment}
+					>Agregar departamento</Button
+				>
 			</div>
 		</div>
 	{/if}

@@ -14,7 +14,7 @@
   let selected: Department = {
     name: "",
     code: "",
-    pricingId: 0,
+    pricing: 0,
     headId: null,
   };
   let pagination: TablePagination = {
@@ -50,7 +50,7 @@
     selected = {
       name: "",
       code: "",
-      pricingId: 0,
+      pricing: 0,
       headId: null,
     };
     formOpen = true;
@@ -61,7 +61,7 @@
     selected = {
       name: "",
       code: "",
-      pricingId: 0,
+      pricing: 0,
       headId: null,
     };
     loadDepartments();
@@ -71,7 +71,6 @@
     formMode = "update";
     selected = {
       ...row,
-      pricingId: row.pricingId ?? 1,
       headId: row.headId ?? row.head?.id ?? null,
     };
     formOpen = true;

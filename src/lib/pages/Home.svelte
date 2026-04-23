@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { Alert, Badge, Card, Heading, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Heading, Spinner } from "flowbite-svelte";
   import { getCurrentUser, getUsers } from "$lib/services/user.service";
   import { getDepartment } from "$lib/services/department.service";
   import { getPeriods } from "$lib/services/period.service";
   import { getMailingList } from "$lib/services/mailing-list.service";
+  import { getPendingWorkHoursCount } from "$lib/services/work-hours.service";
+  import { hasAnyPermission } from "$lib/utils/permissions";
   import type { Period, User } from "$lib/types";
 
   let loading = true;
@@ -15,20 +17,13 @@
   let totalMailing = 0;
   let activePeriods = 0;
   let latestPeriod: Period | null = null;
+  let pendingHoursCount = 0;
+  let canApprovHours = false;
 
   function getStatusColor(status: string) {
-    if (status === "ACTIVE") {
-      return "green";
-    }
-
-    if (status === "PENDING") {
-      return "yellow";
-    }
-
-    if (status === "FINISHED") {
-      return "blue";
-    }
-
+    if (status === "ACTIVE") return "green";
+    if (status === "PENDING") return "yellow";
+    if (status === "FINISHED") return "blue";
     return "dark";
   }
 
@@ -54,6 +49,12 @@
       const periods = periodsRes?.data ?? [];
       activePeriods = periods.filter((item) => item.status === "ACTIVE").length;
       latestPeriod = periods[0] ?? null;
+
+      canApprovHours = hasAnyPermission(currentUser, ["work-hours.approve"]);
+
+      if (canApprovHours) {
+        pendingHoursCount = await getPendingWorkHoursCount();
+      }
 
       if (!userRes) {
         error = "No se pudo cargar el perfil del usuario autenticado.";
@@ -95,6 +96,19 @@
         <Heading tag="h6" class="text-gray-500">Periodos activos</Heading>
         <p class="text-3xl font-semibold">{activePeriods}</p>
       </Card>
+      {#if canApprovHours}
+        <Card>
+          <Heading tag="h6" class="text-gray-500">Horas beca pendientes</Heading>
+          <p class="text-3xl font-semibold {pendingHoursCount > 0 ? 'text-yellow-500' : ''}">
+            {pendingHoursCount}
+          </p>
+          {#if pendingHoursCount > 0}
+            <Badge color="yellow" class="mt-2">Requieren verificación</Badge>
+          {:else}
+            <Badge color="green" class="mt-2">Al día</Badge>
+          {/if}
+        </Card>
+      {/if}
     </div>
 
     <div class="grid md:grid-cols-2 gap-4">

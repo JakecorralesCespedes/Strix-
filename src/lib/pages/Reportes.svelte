@@ -49,18 +49,25 @@
   let success: string | null = null;
   let canPreview = false;
   let canApply = false;
+  let canSelectDepartment = false;
 
   userStore.subscribe((value) => {
     currentUser = value.dbUser ?? null;
-    if (currentUser?.role?.name !== "Admin") {
-      selectedDepartmentId = currentUser?.departmentId ?? null;
-    } else if (selectedDepartmentId === null) {
-      selectedDepartmentId = 0;
-    }
   });
 
-  $: canPreview = hasAnyPermission(currentUser, ["reports.read"]);
-  $: canApply = hasAnyPermission(currentUser, ["work-hours.apply"]);
+  $: canPreview = hasAnyPermission(
+    currentUser,
+    ["reports.read"],
+    selectedDepartmentId,
+  );
+  $: canApply = hasAnyPermission(
+    currentUser,
+    ["work-hours.apply"],
+    selectedDepartmentId,
+  );
+  $: canSelectDepartment =
+    currentUser?.role?.name === "Admin" ||
+    (currentUser?.departmentRoles?.length ?? 0) > 1;
 
   function pickDefaultPeriod(list: Period[]) {
     const active = list.find((item) => item.status === "ACTIVE");
@@ -81,10 +88,16 @@
     const res = await getDepartment({ page: 1, size: 200 });
     departments = res?.data ?? [];
 
-    if (currentUser?.role?.name !== "Admin") {
-      selectedDepartmentId = currentUser?.departmentId ?? null;
-    } else if (selectedDepartmentId === null) {
-      selectedDepartmentId = 0;
+    if (currentUser?.role?.name === "Admin") {
+      if (selectedDepartmentId === null) {
+        selectedDepartmentId = 0;
+      }
+      return;
+    }
+
+    if (!selectedDepartmentId) {
+      selectedDepartmentId =
+        currentUser?.departmentId ?? departments[0]?.id ?? null;
     }
   }
 
@@ -110,7 +123,7 @@
             ? selectedDepartmentId && selectedDepartmentId > 0
               ? selectedDepartmentId
               : undefined
-            : currentUser?.departmentId ?? undefined,
+            : selectedDepartmentId ?? undefined,
       });
     } catch (err) {
       error = "No se pudo generar la previsualizacion.";
@@ -141,7 +154,7 @@
             ? selectedDepartmentId && selectedDepartmentId > 0
               ? selectedDepartmentId
               : undefined
-            : currentUser?.departmentId ?? undefined,
+            : selectedDepartmentId ?? undefined,
         closePeriod,
       });
 
@@ -311,7 +324,7 @@
           <p class="text-sm text-gray-500">Departamento</p>
           <Select
             bind:value={selectedDepartmentId}
-            disabled={currentUser?.role?.name !== "Admin"}
+            disabled={!canSelectDepartment}
           >
             {#if currentUser?.role?.name === "Admin"}
               <option value={0}>Todos los departamentos</option>

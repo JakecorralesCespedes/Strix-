@@ -1,15 +1,16 @@
 <script lang="ts">
   import {
     Alert,
-    TableBodyRow,
-    TableBodyCell,
     Badge,
     Button,
     Heading,
+    TableBodyCell,
+    TableBodyRow,
   } from "flowbite-svelte";
   import { PlusOutline } from "flowbite-svelte-icons";
   import { onMount } from "svelte";
-  import { getConfig, updateConfig } from "../../services/config.service";
+  import { getConfig, updateConfig, getSmtpStatus } from "../../services/config.service";
+  import type { SmtpStatus } from "../../services/config.service";
   import GeneralConfigForm from "../../components/GeneralConfigForm.svelte";
   import type {
     GlobalSetting,
@@ -23,6 +24,7 @@
 
   let globalSetting: GlobalSetting | null = null;
   let mailingList: MailingList[] = [];
+  let smtpStatus: SmtpStatus | null = null;
 
   let error: string | null = null;
   let success: string | null = null;
@@ -87,9 +89,14 @@
     }
   }
 
+  async function reloadSmtpStatus() {
+    smtpStatus = await getSmtpStatus();
+  }
+
   onMount(async () => {
     reloadConfig();
     reloadMailingList();
+    reloadSmtpStatus();
   });
 
   function handleUpdate(e: CustomEvent<GlobalSetting>) {
@@ -158,6 +165,50 @@
       {isLoading}
     ></GeneralConfigForm>
   </div>
+
+  <!-- Servicio de correos -->
+  <div class="grid-flow-row">
+    <Heading tag="h5" class="mb-2">Servicio de Correos</Heading>
+    {#if smtpStatus}
+      <div class="p-4 border rounded-lg bg-gray-50 grid gap-2">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-sm">Estado:</span>
+          <Badge color={smtpStatus.configured ? "green" : "red"}>
+            {smtpStatus.configured ? "Activo" : "No configurado"}
+          </Badge>
+        </div>
+        <p class="text-sm text-gray-600">{smtpStatus.note}</p>
+        {#if !smtpStatus.configured}
+          <div class="mt-2">
+            <p class="text-xs font-semibold text-gray-500 mb-1">
+              Variables de entorno requeridas en el servidor:
+            </p>
+            <div class="flex flex-wrap gap-1">
+              {#each smtpStatus.requiredEnvVars as v}
+                <code class="text-xs bg-gray-200 px-2 py-0.5 rounded">{v}</code>
+              {/each}
+            </div>
+            <p class="text-xs font-semibold text-gray-500 mt-2 mb-1">
+              Opcionales:
+            </p>
+            <div class="flex flex-wrap gap-1">
+              {#each smtpStatus.optionalEnvVars as v}
+                <code class="text-xs bg-gray-200 px-2 py-0.5 rounded">{v}</code>
+              {/each}
+            </div>
+            <p class="text-xs text-gray-400 mt-2">
+              Estas variables deben configurarse manualmente en el servidor donde
+              corre el backend. Una vez configuradas, el servicio se activará
+              automáticamente.
+            </p>
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <p class="text-sm text-gray-400">Cargando estado del servicio de correos...</p>
+    {/if}
+  </div>
+
   <div class="grid-flow-row">
     <Heading tag="h5" class="mb-4">Notificaciones</Heading>
     <div class="mt-3 mb-3">

@@ -49,3 +49,16 @@ export async function updateDepartment(id: number, body: DepartmentPayload) {
     return null;
   }
 }
+
+export async function updateDepartmentPricing(id: number, pricing: number) {
+  try {
+    const result = await api.put<Department>(
+      `${DEFAULT_ENDPOINT}/${id}/pricing`,
+      { pricing },
+    );
+
+    return result.data;
+  } catch (error) {
+    return null;
+  }
+}

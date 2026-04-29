@@ -31,13 +31,12 @@
   let selectedHeadId: number | string | null = null;
   let headInitialized = false;
   let currentDepartmentId: number | null = null;
-  let directPrice: number = 0;
+  let directPrice = 0;
   let isLoading = false;
   let formError: string | null = null;
 
-  $: title = formMode === "create"
-    ? "Crear Departamento"
-    : "Actualizar Departamento";
+  $: title =
+    formMode === "create" ? "Crear departamento" : "Actualizar departamento";
 
   onMount(async () => {
     const usersRes = await getUsers({ page: 1, size: 200 });
@@ -119,15 +118,15 @@
 </script>
 
 <Modal {title} bind:open outsideclose shadow rounded class="w-[50%]">
-  <form class="items-center object-center">
+  <form class="grid gap-3 items-center object-center">
     {#if formError}
-      <Alert type="error" class="mb-3">{formError}</Alert>
+      <Alert color="red" class="mb-3">{formError}</Alert>
     {/if}
     <Label>Nombre</Label>
-    <Input bind:value={data.name} placeholder="Nombre" />
-    <Label>Codigo</Label>
-    <Input bind:value={data.code} placeholder="Codigo" />
-    <Label>Precio por hora (RD$)</Label>
+    <Input bind:value={data.name} placeholder="Nombre del departamento" />
+    <Label>Código</Label>
+    <Input bind:value={data.code} placeholder="Código" />
+    <Label>Precio base por hora (₡)</Label>
     <Input
       type="number"
       bind:value={directPrice}
@@ -135,6 +134,10 @@
       step="0.01"
       placeholder="0.00"
     />
+    <p class="text-xs text-gray-500">
+      Este precio se usa solo cuando no hay precios específicos configurados
+      para el departamento. Para múltiples tarifas usa la sección de "Precios".
+    </p>
     {#if formMode === "update"}
       <Label>Jefe de departamento</Label>
       <Select label="Jefe" bind:value={selectedHeadId}>
@@ -149,7 +152,7 @@
       </Select>
     {:else}
       <p class="text-sm text-gray-500">
-        Puedes asignar el jefe despues de crear el departamento.
+        Puedes asignar el jefe después de crear el departamento.
       </p>
     {/if}
   </form>

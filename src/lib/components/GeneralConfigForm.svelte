@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Input, Button, Label, Spinner } from "flowbite-svelte";
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher } from "svelte";
   import type { GlobalSetting } from "../types";
   import { PenOutline } from "flowbite-svelte-icons";
 
@@ -12,7 +12,7 @@
 
   $: buttonText = disabled ? "Editar" : "Guardar";
 
-  function handleSumbit() {
+  function handleSubmit() {
     if (disabled) {
       disabled = false;
     } else {
@@ -23,8 +23,8 @@
 </script>
 
 <form
-  on:submit|preventDefault={handleSumbit}
-  class="flex g-3 space-x-4 items-end"
+  on:submit|preventDefault={handleSubmit}
+  class="flex g-3 space-x-4 items-end flex-wrap gap-y-3"
 >
   {#if !currentState || isLoading}
     <div class="text-center">
@@ -41,36 +41,37 @@
       ></Input>
     </Label>
     <Label>
-      <span>Codigo de Estudiante</span>
+      <span>Código de estudiante</span>
       <Input
         type="text"
         bind:value={currentState.studentsCode}
-        placeholder="Codigo de Estudiante"
+        placeholder="Código de estudiante"
         {disabled}
       ></Input>
     </Label>
     <Label>
-      <span>Codigo de Beca</span>
+      <span>Código de beca</span>
       <Input
         type="text"
         bind:value={currentState.scolarshipCode}
-        placeholder="Codigo de Beca"
+        placeholder="Código de beca"
         {disabled}
       ></Input>
     </Label>
     <Label>
-      <span>Codigo de Diezmo</span>
+      <span>Código de diezmo</span>
       <Input
         type="text"
         bind:value={currentState.tithCode}
-        placeholder="Codigo de Diezmo"
+        placeholder="Código de diezmo"
         {disabled}
       ></Input>
     </Label>
     <div class="flex align-bottom">
-      <Button type="submit" size="sm" color="blue"
-        ><PenOutline /> {buttonText}</Button
-      >
+      <Button type="submit" size="sm" color="blue">
+        <PenOutline />
+        {buttonText}
+      </Button>
     </div>
   {/if}
 </form>

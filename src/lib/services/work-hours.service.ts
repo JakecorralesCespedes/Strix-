@@ -20,6 +20,7 @@ export type CreateWorkHoursBody = {
   end: string;
   amount?: number;
   price?: number;
+  priceId?: number;
   status?: "PENDING" | "APPROVED" | "REJECTED";
   studentId: number;
   departmentId: number;

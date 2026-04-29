@@ -8,6 +8,7 @@
   import Roles from "./configurations/Roles.svelte";
   import Permissions from "./configurations/Permissions.svelte";
   import Pricing from "./configurations/Pricing.svelte";
+  import PdfTemplate from "./configurations/PdfTemplate.svelte";
   import { userStore } from "../../stores/user.store";
   import type { User } from "$lib/types";
   import { hasAnyPermission } from "$lib/utils/permissions";
@@ -60,6 +61,12 @@
       component: Pricing,
       open: false,
       permissions: ["pricing.read"],
+    },
+    {
+      title: "Plantilla del PDF",
+      component: PdfTemplate,
+      open: false,
+      permissions: ["configs.read"],
     },
   ];
 

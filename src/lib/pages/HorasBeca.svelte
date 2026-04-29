@@ -22,6 +22,10 @@
   import { getPeriods } from "$lib/services/period.service";
   import { getScholarshipRequests } from "$lib/services/scholarship-request.service";
   import { getStudents } from "$lib/services/student.service";
+  import {
+    getDepartmentPrices,
+    type DepartmentPrice,
+  } from "$lib/services/department-prices.service";
   import { hasAnyPermission } from "$lib/utils/permissions";
   import { userStore } from "../../stores/user.store";
   import type {
@@ -35,6 +39,12 @@
     WorkHours,
   } from "$lib/types";
 
+  const STATUS_LABELS: Record<string, string> = {
+    PENDING: "Pendiente",
+    APPROVED: "Aprobada",
+    REJECTED: "Rechazada",
+  };
+
   let workHours: WorkHours[] = [];
   let error: string | null = null;
   let success: string | null = null;
@@ -44,6 +54,7 @@
   let approvedStudents: StudentOnDepartment[] = [];
   let approvedStudentsKey = "";
   let allStudents: Student[] = [];
+  let prices: DepartmentPrice[] = [];
   let currentUser: User | null = null;
   let selectedDepartmentId: number | null = null;
   let selectedStudentFilterId: number | null = null;
@@ -51,6 +62,7 @@
   let selectedStudentRelationId: number | null = null;
   let selectedAdditionalStudentId: number | null = null;
   let selectedPeriodId: number | null = null;
+  let selectedPriceId: number | null = null;
   let statusFilter: "ALL" | "PENDING" | "APPROVED" | "REJECTED" = "ALL";
   let startDateFilter = "";
   let endDateFilter = "";
@@ -110,8 +122,8 @@
   function mapHoursForDisplay(hours: WorkHours) {
     return {
       ...hours,
-      studentName: hours.student?.name ?? "Unknown",
-      departmentName: hours.department?.name ?? "Unknown",
+      studentName: hours.student?.name ?? "Desconocido",
+      departmentName: hours.department?.name ?? "Desconocido",
     };
   }
 
@@ -119,6 +131,10 @@
     if (status === "APPROVED") return "green";
     if (status === "REJECTED") return "red";
     return "yellow";
+  }
+
+  function statusLabel(status: string) {
+    return STATUS_LABELS[status] ?? status;
   }
 
   function buildCsvValue(value: unknown) {
@@ -146,17 +162,19 @@
       "Estado",
     ];
 
-    const rows = workHours.map(mapHoursForDisplay).map((row) => [
-      row.studentName,
-      row.departmentName,
-      new Date(row.start).toLocaleString(),
-      new Date(row.end).toLocaleString(),
-      ...(canViewFinancials
-        ? [row.amount ?? "", row.price ?? "", row.total ?? ""]
-        : []),
-      row.isAdditional ? "Adicional" : "Asignado",
-      row.status,
-    ]);
+    const rows = workHours
+      .map(mapHoursForDisplay)
+      .map((row) => [
+        row.studentName,
+        row.departmentName,
+        new Date(row.start).toLocaleString(),
+        new Date(row.end).toLocaleString(),
+        ...(canViewFinancials
+          ? [row.amount ?? "", row.price ?? "", row.total ?? ""]
+          : []),
+        row.isAdditional ? "Adicional" : "Asignado",
+        statusLabel(row.status),
+      ]);
 
     const csv = [csvHeaders, ...rows]
       .map((row) => row.map(buildCsvValue).join(","))
@@ -207,20 +225,25 @@
     departments = res?.data ?? [];
 
     if (!selectedDepartmentId) {
-      if (currentUser?.departmentId) {
-        selectedDepartmentId = currentUser.departmentId;
-      } else if (currentUser?.departmentRoles?.length) {
+      if (currentUser?.departmentRoles?.length) {
         selectedDepartmentId =
           currentUser.departmentRoles[0]?.departmentId ?? null;
+      } else if (currentUser?.departmentId) {
+        selectedDepartmentId = currentUser.departmentId;
       }
     }
+  }
+
+  async function loadPrices() {
+    prices = await getDepartmentPrices();
   }
 
   async function loadPeriods() {
     const res = await getPeriods({ page: 1, size: 200 });
     periods = res?.data ?? [];
     if (!selectedPeriodId && periods.length) {
-      selectedPeriodId = periods[0].id;
+      const active = periods.find((p) => p.status === "ACTIVE");
+      selectedPeriodId = (active ?? periods[0]).id;
     }
   }
 
@@ -251,6 +274,7 @@
     selectedStudentId = null;
     selectedStudentRelationId = null;
     selectedAdditionalStudentId = null;
+    selectedPriceId = null;
     additionalStudentSearch = "";
     assignedDepartmentLabel = "";
   }
@@ -295,6 +319,7 @@
     selectedStudentId = row.studentId ?? null;
     selectedDepartmentId = row.departmentId ?? selectedDepartmentId;
     selectedPeriodId = row.periodId ?? selectedPeriodId;
+    selectedPriceId = (row as WorkHours & { priceId?: number }).priceId ?? null;
     selectedStudentRelationId = null;
     selectedAdditionalStudentId = row.isAdditional ? row.studentId : null;
     additionalStudentSearch = "";
@@ -328,12 +353,6 @@
     formAmount = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
   }
 
-  /**
-   * Cuando el usuario elige el modo manual:
-   *  - Escribe el dia de la jornada y la cantidad de horas.
-   *  - Sintetizamos start = dia 08:00 y end = start + amount horas,
-   *    para que el backend mantenga la consistencia del modelo.
-   */
   function syncManualTimes() {
     if (!formManualAmount || !formDateOnly || !formAmount || formAmount <= 0) {
       return;
@@ -372,8 +391,6 @@
       return;
     }
 
-    // Solo los aprobadores pueden forzar estado al editar; al crear siempre se
-    // guarda como PENDING (lo asegura el backend).
     const payloadStatus =
       formMode === "update" && canApprove ? formStatus : undefined;
 
@@ -383,6 +400,7 @@
       end: new Date(formEnd).toISOString(),
       amount: canViewFinancials ? formAmount : undefined,
       price: canViewFinancials ? formPrice : undefined,
+      priceId: selectedPriceId ? Number(selectedPriceId) : undefined,
       status: payloadStatus,
       studentId: resolvedStudentId,
       departmentId: Number(selectedDepartmentId),
@@ -407,7 +425,7 @@
     success =
       formMode === "update"
         ? "Horas actualizadas."
-        : "Horas registradas como PENDING. El jefe de departamento debe aprobarlas.";
+        : "Horas registradas como Pendiente. El jefe de departamento debe aprobarlas.";
     formMode = "create";
     editingId = null;
     await loadWorkHours();
@@ -434,11 +452,33 @@
     currentUser = value.dbUser ?? null;
   });
 
+  $: departmentPrices = prices.filter(
+    (p) => p.departmentId === Number(selectedDepartmentId) && p.active,
+  );
+
   $: if (selectedDepartmentId) {
-    const currentDepartment = departments.find(
-      (d) => d.id === Number(selectedDepartmentId),
-    );
-    formPrice = Number(currentDepartment?.pricing ?? 0);
+    if (selectedPriceId) {
+      const match = departmentPrices.find(
+        (p) => p.id === Number(selectedPriceId),
+      );
+      if (match) {
+        formPrice = match.price;
+      } else {
+        selectedPriceId = null;
+      }
+    }
+    if (!selectedPriceId) {
+      const firstActive = departmentPrices[0];
+      if (firstActive) {
+        selectedPriceId = firstActive.id;
+        formPrice = firstActive.price;
+      } else {
+        const currentDepartment = departments.find(
+          (d) => d.id === Number(selectedDepartmentId),
+        );
+        formPrice = Number(currentDepartment?.pricing ?? 0);
+      }
+    }
   }
 
   $: {
@@ -491,11 +531,14 @@
   onMount(() => {
     loadDepartments();
     loadPeriods();
+    loadPrices();
     loadWorkHours();
   });
 </script>
 
-<div class="w-full h-full px-2 sm:px-4 grid gap-3 pb-20">
+<div
+  class="w-full max-w-full min-w-0 h-full px-2 sm:px-4 flex flex-col gap-3 pb-20 overflow-x-hidden"
+>
   <div
     class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
   >
@@ -589,104 +632,53 @@
     <Alert color="green" dismissable>{success}</Alert>
   {/if}
 
-  <!-- Tabla tradicional (desktop) -->
-  <div class="hidden md:block">
-    <Table
-      data={workHours.map(mapHoursForDisplay)}
-      {headers}
-      {pagination}
-      on:next={nextPage}
-      on:previous={previousPage}
-    >
-      <svelte:fragment slot="row" let:row>
-        <td
-          class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
-        >
-          {row.studentName}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {row.departmentName}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {new Date(row.start).toLocaleString()}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {new Date(row.end).toLocaleString()}
-        </td>
-        {#if canViewFinancials}
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            {row.amount ?? "-"}
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-            {row.price != null
-              ? `RD$ ${row.price?.toLocaleString?.("es-DO") ?? row.price}`
-              : "-"}
-          </td>
-          <td
-            class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
-          >
-            {row.total != null
-              ? `RD$ ${row.total?.toLocaleString?.("es-DO") ?? row.total}`
-              : "-"}
-          </td>
-        {/if}
-        <td class="px-6 py-4 whitespace-nowrap text-sm">
-          <Badge color={row.isAdditional ? "purple" : "blue"}>
-            {row.isAdditional ? "Adicional" : "Asignado"}
-          </Badge>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm">
-          <Badge color={getBadgeColor(row.status)}>
-            {row.status}
-          </Badge>
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm">
-          {#if canWrite}
-            <Button
-              size="xs"
-              color="alternative"
-              on:click={() => openEdit(row)}
-            >
-              {canApprove && row.status === "PENDING" ? "Verificar" : "Editar"}
-            </Button>
-          {:else}
-            -
-          {/if}
-        </td>
-      </svelte:fragment>
-    </Table>
-  </div>
-
-  <!-- Vista de tarjetas (mobile) -->
-  <div class="md:hidden grid gap-2">
+  <div class="flex flex-col gap-2">
     {#if !workHours.length}
       <p class="text-sm text-gray-500 text-center py-4">
         No hay horas registradas.
       </p>
     {/if}
     {#each workHours.map(mapHoursForDisplay) as row}
-      <div class="p-3 border rounded-lg bg-white grid gap-2 shadow-sm">
-        <div class="flex items-start justify-between gap-2">
-          <div class="grid gap-0.5">
-            <p class="font-semibold text-gray-900">{row.studentName}</p>
-            <p class="text-xs text-gray-500">{row.departmentName}</p>
+      <div class="p-3 border rounded-lg bg-white flex flex-col gap-2 shadow-sm">
+        <div class="flex items-start justify-between gap-2 flex-wrap">
+          <div class="flex flex-col gap-0.5 min-w-0">
+            <p class="font-semibold text-gray-900 break-words">
+              {row.studentName}
+            </p>
+            <p class="text-xs text-gray-500 break-words">
+              {row.departmentName}
+            </p>
           </div>
-          <div class="flex flex-col items-end gap-1">
-            <Badge color={getBadgeColor(row.status)}>{row.status}</Badge>
+          <div class="flex flex-col items-end gap-1 shrink-0">
+            <Badge color={getBadgeColor(row.status)}>
+              {statusLabel(row.status)}
+            </Badge>
             <Badge color={row.isAdditional ? "purple" : "blue"}>
               {row.isAdditional ? "Adicional" : "Asignado"}
             </Badge>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
+        <div
+          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs text-gray-600"
+        >
           <div>
             <p class="text-gray-400">Entrada</p>
-            <p>{new Date(row.start).toLocaleString()}</p>
+            <p>
+              {new Date(row.start).toLocaleString("es-CR", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            </p>
           </div>
           <div>
             <p class="text-gray-400">Salida</p>
-            <p>{new Date(row.end).toLocaleString()}</p>
+            <p>
+              {new Date(row.end).toLocaleString("es-CR", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            </p>
           </div>
           {#if canViewFinancials}
             <div>
@@ -694,10 +686,18 @@
               <p class="font-medium">{row.amount ?? "-"}</p>
             </div>
             <div>
+              <p class="text-gray-400">Precio</p>
+              <p class="font-medium">
+                {row.price != null
+                  ? `₡${row.price?.toLocaleString?.("es-CR") ?? row.price}`
+                  : "-"}
+              </p>
+            </div>
+            <div>
               <p class="text-gray-400">Total</p>
               <p class="font-medium">
                 {row.total != null
-                  ? `RD$ ${row.total?.toLocaleString?.("es-DO") ?? row.total}`
+                  ? `₡${row.total?.toLocaleString?.("es-CR") ?? row.total}`
                   : "-"}
               </p>
             </div>
@@ -742,14 +742,16 @@
   outsideclose
   size="md"
 >
-  <div class="grid gap-4">
-    <!-- Departamento + periodo -->
+  <div class="grid gap-4 max-w-full">
     <div class="grid sm:grid-cols-2 gap-3">
       <div>
         <Label class="mb-1">Departamento</Label>
         <Select
           bind:value={selectedDepartmentId}
-          on:change={() => (selectedStudentRelationId = null)}
+          on:change={() => {
+            selectedStudentRelationId = null;
+            selectedPriceId = null;
+          }}
         >
           <option value={""}>Selecciona un departamento</option>
           {#each departments as department}
@@ -768,13 +770,12 @@
       </div>
     </div>
 
-    <!-- Tipo de estudiante -->
-    <div class="flex items-center gap-2 p-2 bg-gray-50 rounded">
-      <Checkbox bind:checked={formIsAdditional} />
-      <div class="grid gap-0.5">
+    <div class="flex items-start gap-2 p-2 bg-gray-50 rounded">
+      <Checkbox bind:checked={formIsAdditional} class="mt-1" />
+      <div class="flex flex-col gap-0.5">
         <p class="text-sm font-medium">Estudiante adicional</p>
         <p class="text-xs text-gray-500">
-          Actualo cuando registras horas para alguien que no esta asignado a
+          Actívalo cuando registres horas para alguien que no está asignado a
           este departamento.
         </p>
       </div>
@@ -786,8 +787,7 @@
         <Input
           bind:value={additionalStudentSearch}
           placeholder="Nombre o carnet"
-          on:input={() =>
-            loadAllStudents(additionalStudentSearch || undefined)}
+          on:input={() => loadAllStudents(additionalStudentSearch || undefined)}
         />
       </div>
       <div>
@@ -820,26 +820,42 @@
       </div>
     {/if}
 
-    <!-- Nombre de la jornada -->
     <div>
-      <Label class="mb-1">Descripcion</Label>
+      <Label class="mb-1">Descripción</Label>
       <Input
         bind:value={formName}
-        placeholder="Ej: Tutoria matematica, Laboratorio..."
+        placeholder="Ej: Tutoría matemática, Laboratorio..."
       />
     </div>
 
-    <!-- Modo de registro -->
+    {#if departmentPrices.length}
+      <div>
+        <Label class="mb-1">Precio aplicado</Label>
+        <Select bind:value={selectedPriceId}>
+          {#each departmentPrices as price}
+            <option value={price.id}>
+              {price.label} - ₡{price.price.toLocaleString("es-CR")}
+            </option>
+          {/each}
+        </Select>
+        <p class="text-xs text-gray-400 mt-1">
+          Selecciona el precio que aplica para este registro de horas.
+        </p>
+      </div>
+    {/if}
+
     <div class="p-3 border rounded-lg grid gap-3 bg-gray-50">
       <div class="flex items-center justify-between gap-2">
         <div>
           <p class="text-sm font-medium">
-            {formManualAmount ? "Registro rapido por dia" : "Registro por hora exacta"}
+            {formManualAmount
+              ? "Registro rápido por día"
+              : "Registro por hora exacta"}
           </p>
           <p class="text-xs text-gray-500">
             {formManualAmount
-              ? "Solo escoges fecha y cuantas horas trabajaste. Pensado para moviles."
-              : "Escoges hora exacta de entrada y salida. Util desde computadora."}
+              ? "Solo escoges fecha y cuántas horas trabajaste. Pensado para móviles."
+              : "Escoges hora exacta de entrada y salida. Útil desde computadora."}
           </p>
         </div>
         <Toggle bind:checked={formManualAmount} />
@@ -878,11 +894,19 @@
         <div class="grid sm:grid-cols-2 gap-3">
           <div>
             <Label class="mb-1 text-sm font-medium">Hora entrada</Label>
-            <Input type="datetime-local" bind:value={formStart} class="text-base" />
+            <Input
+              type="datetime-local"
+              bind:value={formStart}
+              class="text-base"
+            />
           </div>
           <div>
             <Label class="mb-1 text-sm font-medium">Hora salida</Label>
-            <Input type="datetime-local" bind:value={formEnd} class="text-base" />
+            <Input
+              type="datetime-local"
+              bind:value={formEnd}
+              class="text-base"
+            />
           </div>
         </div>
       {/if}
@@ -896,13 +920,7 @@
         </div>
         <div>
           <Label class="mb-1">Precio por hora</Label>
-          <Input
-            type="number"
-            value={formPrice}
-            min="0"
-            step="0.01"
-            readonly
-          />
+          <Input type="number" value={formPrice} min="0" step="0.01" readonly />
         </div>
       </div>
     {/if}
@@ -910,10 +928,10 @@
     {#if formMode === "update" && canApprove}
       <div class="p-3 bg-blue-50 border border-blue-200 rounded grid gap-2">
         <p class="text-sm font-medium text-blue-900">
-          Verificacion del jefe de departamento
+          Verificación del jefe de departamento
         </p>
         <Select bind:value={formStatus}>
-          <option value="PENDING">Dejar como PENDING</option>
+          <option value="PENDING">Dejar como pendiente</option>
           <option value="APPROVED">Aprobar</option>
           <option value="REJECTED">Rechazar</option>
         </Select>
@@ -923,8 +941,8 @@
       </div>
     {:else if formMode === "create"}
       <Alert color="yellow">
-        Las horas se registran automaticamente como <b>PENDING</b>. Solo el jefe
-        del departamento puede aprobarlas para que entren al periodo.
+        Las horas se registran automáticamente como <b>Pendiente</b>. Solo el
+        jefe del departamento puede aprobarlas para que entren al periodo.
       </Alert>
     {/if}
   </div>

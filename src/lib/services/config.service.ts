@@ -46,3 +46,80 @@ export async function getSmtpStatus(): Promise<SmtpStatus | null> {
     return null;
   }
 }
+
+export type PdfTemplate = {
+  pdfInstitutionName: string;
+  pdfHeaderTitle: string;
+  pdfHeaderSubtitle: string;
+  pdfFooterText: string;
+  pdfPrimaryColor: string;
+  pdfSignatureLabel: string;
+  pdfLogoDataUrl: string;
+};
+
+export async function getPdfTemplate(): Promise<PdfTemplate | null> {
+  try {
+    const result = await api.get<PdfTemplate>(
+      `${DEFAULT_ENDPOINT}/pdf-template`,
+    );
+    return result.data;
+  } catch {
+    return null;
+  }
+}
+
+export async function updatePdfTemplate(
+  data: Partial<PdfTemplate>,
+): Promise<PdfTemplate | null> {
+  try {
+    const result = await api.put<PdfTemplate>(
+      `${DEFAULT_ENDPOINT}/pdf-template`,
+      data,
+    );
+    return result.data;
+  } catch {
+    return null;
+  }
+}
+
+export type NotificationToggles = {
+  "notify.user.welcome": boolean;
+  "notify.user.passwordReset": boolean;
+  "notify.scholarship.approved": boolean;
+  "notify.scholarship.rejected": boolean;
+  "notify.workHours.approved": boolean;
+};
+
+export async function getNotificationToggles(): Promise<NotificationToggles | null> {
+  try {
+    const result = await api.get<NotificationToggles>(
+      `${DEFAULT_ENDPOINT}/notifications`,
+    );
+    return result.data;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateNotificationToggles(
+  data: Partial<NotificationToggles>,
+): Promise<NotificationToggles | null> {
+  try {
+    const result = await api.put<NotificationToggles>(
+      `${DEFAULT_ENDPOINT}/notifications`,
+      data,
+    );
+    return result.data;
+  } catch {
+    return null;
+  }
+}
+
+export async function requestPasswordReset(email: string): Promise<boolean> {
+  try {
+    await api.post(`/auth/forgot-password`, { email });
+    return true;
+  } catch {
+    return false;
+  }
+}

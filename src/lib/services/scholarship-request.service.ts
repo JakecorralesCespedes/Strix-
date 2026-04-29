@@ -17,7 +17,7 @@ export type UpdateScholarshipRequestBody = {
 
 export type CreateScholarshipRequestBody = {
   departmentId: number;
-  status: "PENDING" | "APPROVED" | "REJECTED";
+  status?: "PENDING" | "APPROVED" | "REJECTED";
   // Opcion A: referenciar estudiante existente
   studentId?: number;
   // Opcion B: proporcionar datos inline del estudiante (upsert por code/email)

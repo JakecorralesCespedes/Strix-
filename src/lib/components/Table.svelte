@@ -31,11 +31,17 @@
   }
 </script>
 
-<Table hoverable={true} striped>
+<Table
+  hoverable={true}
+  striped
+  divClass="relative overflow-x-auto w-full max-w-full rounded-lg border border-gray-100 bg-white"
+>
   <TableHead>
     {#each headers as header}
       <slot name="header" {header}>
-        <TableHeadCell>{header.name}</TableHeadCell>
+        <TableHeadCell padding="px-2 py-2" class="text-xs">
+          {header.name}
+        </TableHeadCell>
       </slot>
     {/each}
   </TableHead>
@@ -44,7 +50,10 @@
       <SkeletonTable rows={5} columns={headers.length} />
     {:else if data.length === 0}
       <TableBodyRow>
-        <TableBodyCell colspan={headers.length} class="text-center text-gray-500">
+        <TableBodyCell
+          colspan={headers.length}
+          class="text-center text-gray-500"
+        >
           Sin datos disponibles
         </TableBodyCell>
       </TableBodyRow>
@@ -67,13 +76,13 @@
     {/if}
   </TableBody>
 </Table>
-<div class="flex flex-row-reverse mt-4">
+<div class="flex flex-row-reverse mt-4 gap-2">
   {#if pagination}
     {#if pagination.next_page}
-      <PaginationItem slot="next" on:click={next}>Next</PaginationItem>
+      <PaginationItem on:click={next}>Siguiente</PaginationItem>
     {/if}
     {#if pagination.prev_page}
-      <PaginationItem slot="prev" on:click={previous}>Previous</PaginationItem>
+      <PaginationItem on:click={previous}>Anterior</PaginationItem>
     {/if}
   {/if}
 </div>

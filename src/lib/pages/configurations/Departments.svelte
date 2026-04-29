@@ -1,30 +1,50 @@
 <script lang="ts">
-  import { Alert, Button, Heading, TableBodyCell, TableBodyRow } from "flowbite-svelte";
+  import {
+    Alert,
+    Button,
+    Heading,
+    TableBodyCell,
+    TableBodyRow,
+  } from "flowbite-svelte";
   import { onMount } from "svelte";
   import DepartmentsForm from "../../components/DepartmentsForm.svelte";
   import Table from "$lib/components/Table.svelte";
   import { PlusOutline } from "flowbite-svelte-icons";
   import { getDepartment } from "$lib/services/department.service";
-  import type { Department, TableHeader, TablePagination } from "$lib/types";
+  import { hasAnyPermission } from "$lib/utils/permissions";
+  import { userStore } from "../../../stores/user.store";
+  import type {
+    Department,
+    TableHeader,
+    TablePagination,
+    User,
+  } from "$lib/types";
 
   let formMode: "create" | "update" = "create";
   let formOpen = false;
   let error: string | null = null;
   let departments: Department[] = [];
+  let currentUser: User | null = null;
   let selected: Department = {
     name: "",
     code: "",
-    pricingId: 0,
+    pricing: 0,
     headId: null,
   };
   let pagination: TablePagination = {
     page: 1,
   };
 
+  userStore.subscribe((value) => {
+    currentUser = value.dbUser ?? null;
+  });
+
+  $: canWrite = hasAnyPermission(currentUser, ["departments.write"]);
+
   const headers: TableHeader[] = [
     { name: "Nombre", field: "name" },
-    { name: "Codigo", field: "code" },
-    { name: "Precio", field: "pricing" },
+    { name: "Código", field: "code" },
+    { name: "Precio base", field: "pricing" },
     { name: "Jefe", field: "head" },
     { name: "Acciones", field: "actions" },
   ];
@@ -46,11 +66,12 @@
   }
 
   function handleOpenForm() {
+    if (!canWrite) return;
     formMode = "create";
     selected = {
       name: "",
       code: "",
-      pricingId: 0,
+      pricing: 0,
       headId: null,
     };
     formOpen = true;
@@ -61,17 +82,17 @@
     selected = {
       name: "",
       code: "",
-      pricingId: 0,
+      pricing: 0,
       headId: null,
     };
     loadDepartments();
   }
 
   function handleEdit(row: Department) {
+    if (!canWrite) return;
     formMode = "update";
     selected = {
       ...row,
-      pricingId: row.pricingId ?? 1,
       headId: row.headId ?? row.head?.id ?? null,
     };
     formOpen = true;
@@ -93,24 +114,35 @@
 </script>
 
 <div class="w-full px-4 grid gap-3">
-  <div class=" grid-flow-row">
-    <Heading tag="h3" class="mb-4">Configuracion de Departamentos</Heading>
-
-    <DepartmentsForm
-      bind:open={formOpen}
-      {formMode}
-      data={selected}
-      on:close={handleCloseForm}
-    />
+  <div class="grid-flow-row flex items-center justify-between flex-wrap gap-2">
+    <Heading tag="h3" class="mb-2">Configuración de departamentos</Heading>
+    {#if canWrite}
+      <Button color="primary" size="sm" on:click={handleOpenForm}>
+        <PlusOutline /> Agregar
+      </Button>
+    {/if}
   </div>
 
+  <DepartmentsForm
+    bind:open={formOpen}
+    {formMode}
+    data={selected}
+    on:close={handleCloseForm}
+  />
+
   {#if error}
-    <Alert type="error" dismissable>{error}</Alert>
+    <Alert color="red" dismissable>{error}</Alert>
   {/if}
+
+  <p class="text-xs text-gray-500">
+    El precio base se usa cuando un departamento no tiene precios específicos
+    configurados en la sección "Precios". Si el departamento tiene precios, el
+    sistema usa el precio que se elija al registrar las horas.
+  </p>
 
   <Table
     data={departments}
-    headers={headers}
+    {headers}
     {pagination}
     on:next={nextPage}
     on:previous={previousPage}
@@ -118,19 +150,25 @@
     <TableBodyRow slot="row" let:row>
       <TableBodyCell>{row.name}</TableBodyCell>
       <TableBodyCell>{row.code}</TableBodyCell>
-      <TableBodyCell>{row.pricing ?? "-"}</TableBodyCell>
+      <TableBodyCell
+        >{row.pricing != null
+          ? `₡${row.pricing.toLocaleString("es-CR")}`
+          : "-"}</TableBodyCell
+      >
       <TableBodyCell>{row.head?.name ?? "-"}</TableBodyCell>
       <TableBodyCell>
-        <Button size="xs" color="alternative" on:click={() => handleEdit(row)}>
-          Editar
-        </Button>
+        {#if canWrite}
+          <Button
+            size="xs"
+            color="alternative"
+            on:click={() => handleEdit(row)}
+          >
+            Editar
+          </Button>
+        {:else}
+          -
+        {/if}
       </TableBodyCell>
     </TableBodyRow>
   </Table>
-
-  <div class="grid-flow-row">
-    <Button color="primary" size="sm" on:click={handleOpenForm}
-      ><PlusOutline /> Agregar</Button
-    >
-  </div>
 </div>

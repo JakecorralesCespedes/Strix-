@@ -20,10 +20,12 @@ export type CreateWorkHoursBody = {
   end: string;
   amount?: number;
   price?: number;
+  priceId?: number;
   status?: "PENDING" | "APPROVED" | "REJECTED";
   studentId: number;
   departmentId: number;
   periodId: number;
+  isAdditional?: boolean;
 };
 
 export type UpdateWorkHoursBody = Partial<CreateWorkHoursBody>;
@@ -38,6 +40,17 @@ export async function getWorkHours(query?: PaginationQuery) {
   } catch (error) {
     console.error("Error fetching work hours:", error);
     return null;
+  }
+}
+
+export async function getPendingWorkHoursCount(): Promise<number> {
+  try {
+    const result = await api.get<{ count: number }>(
+      `${DEFAULT_ENDPOINT}/pending-count`,
+    );
+    return result.data.count;
+  } catch {
+    return 0;
   }
 }
 

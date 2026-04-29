@@ -24,7 +24,10 @@
       return;
     }
 
-    if (userState.firebaseUser !== null && userState.firebaseUser !== undefined) {
+    if (
+      userState.firebaseUser !== null &&
+      userState.firebaseUser !== undefined
+    ) {
       // Load user from database
       const dbUser = await getCurrentUser();
       userStore.update((current) => ({ ...current, dbUser }));
@@ -60,5 +63,5 @@
 {#if Component}
   <svelte:component this={Component} />
 {:else}
-  <p>Loading...</p>
+  <p class="text-center text-gray-500 py-10">Cargando...</p>
 {/if}

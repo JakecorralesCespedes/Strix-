@@ -64,6 +64,17 @@ export type Role = {
   users: User[];
 };
 
+export type UserDepartmentRole = {
+  id: number;
+  userId: number;
+  departmentId: number;
+  roleId: number;
+  createdAt: Date;
+  updatedAt: Date;
+  department: Department;
+  role: Role;
+};
+
 export type Pricing = {
   id: number;
   price: number;
@@ -81,12 +92,13 @@ export type Department = {
   headId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
-  pricing?: Pricing;
+  pricing?: number;
   head?: User;
   users?: User[];
   students?: StudentOnDepartment[];
   hours?: WorkHours[];
   scholarshipPayroll?: ScholarshipPayroll[];
+  userRoles?: UserDepartmentRole[];
 };
 
 export type User = {
@@ -101,6 +113,7 @@ export type User = {
   updatedAt: Date;
   role: Role;
   department?: Department;
+  departmentRoles?: UserDepartmentRole[];
   workHours: WorkHours[];
   scholarshipPayroll: ScholarshipPayroll[];
 };
@@ -138,6 +151,7 @@ export type WorkHours = {
   price: number | null;
   total: number | null;
   status: WorkHoursStatus;
+  isAdditional: boolean;
   registedBy: number;
   studentId: number;
   departmentId: number;

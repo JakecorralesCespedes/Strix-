@@ -14,6 +14,7 @@ export type DepartmentPayload = {
   name: string;
   code: string;
   pricingId?: number;
+  pricing?: number;
   headId?: number | null;
 };
 
@@ -42,6 +43,19 @@ export async function createDepartment(body: DepartmentPayload) {
 export async function updateDepartment(id: number, body: DepartmentPayload) {
   try {
     const result = await api.put<Department>(`${DEFAULT_ENDPOINT}/${id}`, body);
+
+    return result.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function updateDepartmentPricing(id: number, pricing: number) {
+  try {
+    const result = await api.put<Department>(
+      `${DEFAULT_ENDPOINT}/${id}/pricing`,
+      { pricing },
+    );
 
     return result.data;
   } catch (error) {

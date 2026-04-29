@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import type { Period } from "$lib/types";
 
 function formatDate(value: string | Date): string {
-  return new Date(value).toLocaleDateString("es-DO", {
+  return new Date(value).toLocaleDateString("es-CR", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -39,21 +39,17 @@ export function exportPeriodsToPdf(periods: Period[]): void {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("Reporte Formal de Periodos", 14, 18);
+  doc.text("Reporte formal de periodos", 14, 18);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(
-    `Fecha de emision: ${generatedAt.toLocaleString("es-DO")}`,
-    14,
-    24,
-  );
+  doc.text(`Fecha de emisión: ${generatedAt.toLocaleString("es-CR")}`, 14, 24);
 
   doc.text(`Total de periodos: ${periods.length}`, 14, 29);
 
   autoTable(doc, {
     startY: 36,
-    head: [["Nombre", "Fecha Inicio", "Fecha Fin", "Estado"]],
+    head: [["Nombre", "Fecha de inicio", "Fecha de fin", "Estado"]],
     body: rows,
     theme: "grid",
     styles: {
@@ -69,7 +65,7 @@ export function exportPeriodsToPdf(periods: Period[]): void {
 
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFontSize(9);
-  doc.text("Strix - Documento generado automaticamente", 14, pageHeight - 10);
+  doc.text("Strix - Documento generado automáticamente", 14, pageHeight - 10);
 
   doc.save(`reporte-periodos-${generatedAt.getTime()}.pdf`);
 }
@@ -79,8 +75,8 @@ export function exportPeriodsToExcel(periods: Period[]): void {
 
   const data = periods.map((period) => ({
     Nombre: period.name,
-    "Fecha Inicio": formatDate(period.start),
-    "Fecha Fin": formatDate(period.end),
+    "Fecha de inicio": formatDate(period.start),
+    "Fecha de fin": formatDate(period.end),
     Estado: normalizeStatus(period.status),
   }));
 

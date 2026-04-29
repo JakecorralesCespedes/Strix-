@@ -15,24 +15,24 @@
 
   const hardcodedReports = [
     {
-      title: "Reporte de Periodos",
+      title: "Reporte de periodos",
       description:
-        "Genera PDF formal o Excel seleccionando un periodo desde la seccion de Periodos.",
-      actionLabel: "Ir a Periodos",
+        "Genera PDF formal o Excel seleccionando un periodo desde la sección de Periodos.",
+      actionLabel: "Ir a periodos",
       actionPath: "/configuraciones",
     },
     {
-      title: "Reporte de Solicitudes",
+      title: "Reporte de solicitudes",
       description:
-        "Visualiza solicitudes por estudiante y departamento con estado de aprobacion.",
-      actionLabel: "Ver Solicitudes",
+        "Visualiza solicitudes por estudiante y departamento con estado de aprobación.",
+      actionLabel: "Ver solicitudes",
       actionPath: "/solicitudes",
     },
     {
-      title: "Reporte de Horas Beca",
+      title: "Reporte de horas beca",
       description:
         "Consulta resumen de horas registradas, aprobadas y monto acumulado.",
-      actionLabel: "Ver Horas Beca",
+      actionLabel: "Ver horas beca",
       actionPath: "/horas-beca",
     },
   ];
@@ -49,18 +49,25 @@
   let success: string | null = null;
   let canPreview = false;
   let canApply = false;
+  let canSelectDepartment = false;
 
   userStore.subscribe((value) => {
     currentUser = value.dbUser ?? null;
-    if (currentUser?.role?.name !== "Admin") {
-      selectedDepartmentId = currentUser?.departmentId ?? null;
-    } else if (selectedDepartmentId === null) {
-      selectedDepartmentId = 0;
-    }
   });
 
-  $: canPreview = hasAnyPermission(currentUser, ["reports.read"]);
-  $: canApply = hasAnyPermission(currentUser, ["work-hours.apply"]);
+  $: canPreview = hasAnyPermission(
+    currentUser,
+    ["reports.read"],
+    selectedDepartmentId,
+  );
+  $: canApply = hasAnyPermission(
+    currentUser,
+    ["work-hours.apply"],
+    selectedDepartmentId,
+  );
+  $: canSelectDepartment =
+    currentUser?.role?.name === "Admin" ||
+    (currentUser?.departmentRoles?.length ?? 0) > 1;
 
   function pickDefaultPeriod(list: Period[]) {
     const active = list.find((item) => item.status === "ACTIVE");
@@ -81,10 +88,16 @@
     const res = await getDepartment({ page: 1, size: 200 });
     departments = res?.data ?? [];
 
-    if (currentUser?.role?.name !== "Admin") {
-      selectedDepartmentId = currentUser?.departmentId ?? null;
-    } else if (selectedDepartmentId === null) {
-      selectedDepartmentId = 0;
+    if (currentUser?.role?.name === "Admin") {
+      if (selectedDepartmentId === null) {
+        selectedDepartmentId = 0;
+      }
+      return;
+    }
+
+    if (!selectedDepartmentId) {
+      selectedDepartmentId =
+        currentUser?.departmentId ?? departments[0]?.id ?? null;
     }
   }
 
@@ -110,10 +123,10 @@
             ? selectedDepartmentId && selectedDepartmentId > 0
               ? selectedDepartmentId
               : undefined
-            : currentUser?.departmentId ?? undefined,
+            : selectedDepartmentId ?? undefined,
       });
     } catch (err) {
-      error = "No se pudo generar la previsualizacion.";
+      error = "No se pudo generar la previsualización.";
     } finally {
       loading = false;
     }
@@ -141,7 +154,7 @@
             ? selectedDepartmentId && selectedDepartmentId > 0
               ? selectedDepartmentId
               : undefined
-            : currentUser?.departmentId ?? undefined,
+            : selectedDepartmentId ?? undefined,
         closePeriod,
       });
 
@@ -156,9 +169,9 @@
             items: appliedItems,
             totals: result.totals,
           };
-      success = `Aplicacion completada: ${result.appliedCount} registros.`;
+      success = `Aplicación completada: ${result.appliedCount} registros.`;
     } catch (err) {
-      error = "No se pudo aplicar la previsualizacion.";
+      error = "No se pudo aplicar la previsualización.";
     } finally {
       loading = false;
     }
@@ -169,7 +182,11 @@
     if (Number.isFinite(price)) {
       return price;
     }
-    if (Number.isFinite(item.subtotal) && Number.isFinite(item.hours) && item.hours) {
+    if (
+      Number.isFinite(item.subtotal) &&
+      Number.isFinite(item.hours) &&
+      item.hours
+    ) {
       return Number((item.subtotal / item.hours).toFixed(2));
     }
     return "-";
@@ -180,7 +197,7 @@
       return "";
     }
     const text = String(value);
-    if (text.includes(",") || text.includes("\n") || text.includes("\"")) {
+    if (text.includes(",") || text.includes("\n") || text.includes('"')) {
       return `"${text.replace(/"/g, '""')}"`;
     }
     return text;
@@ -188,7 +205,7 @@
 
   function exportPreviewCsv() {
     if (!preview) {
-      error = "Genera una previsualizacion primero.";
+      error = "Genera una previsualización primero.";
       return;
     }
 
@@ -228,12 +245,7 @@
       preview.totals.receivable,
     ];
 
-    const csv = [
-      headers,
-      ...rows,
-      [],
-      totals,
-    ]
+    const csv = [headers, ...rows, [], totals]
       .map((row) => row.map(buildCsvValue).join(","))
       .join("\n");
 
@@ -248,7 +260,7 @@
 
   function handlePrint() {
     if (!preview) {
-      error = "Genera una previsualizacion primero.";
+      error = "Genera una previsualización primero.";
       return;
     }
     window.print();
@@ -264,7 +276,7 @@
   <div class="grid gap-4">
     <Heading tag="h3">Reportes</Heading>
     <P class="text-gray-600">
-      Panel rapido para abrir los reportes disponibles del sistema.
+      Panel rápido para abrir los reportes disponibles del sistema.
     </P>
 
     <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -283,18 +295,18 @@
   </div>
 
   <div class="grid gap-4">
-    <Heading tag="h4">Aplicacion de horas beca</Heading>
+    <Heading tag="h4">Aplicación de horas beca</Heading>
     <P class="text-gray-600">
       Previsualiza y aplica horas aprobadas para el periodo seleccionado.
     </P>
 
     {#if canPreview || canApply}
       {#if error}
-        <Alert type="error" dismissable>{error}</Alert>
+        <Alert color="red" dismissable>{error}</Alert>
       {/if}
 
       {#if success}
-        <Alert type="success" dismissable>{success}</Alert>
+        <Alert color="green" dismissable>{success}</Alert>
       {/if}
 
       <div class="grid md:grid-cols-3 gap-3">
@@ -311,7 +323,7 @@
           <p class="text-sm text-gray-500">Departamento</p>
           <Select
             bind:value={selectedDepartmentId}
-            disabled={currentUser?.role?.name !== "Admin"}
+            disabled={!canSelectDepartment}
           >
             {#if currentUser?.role?.name === "Admin"}
               <option value={0}>Todos los departamentos</option>
@@ -324,7 +336,11 @@
 
         <div class="flex items-end gap-2 flex-wrap">
           {#if canPreview}
-            <Button color="alternative" on:click={handlePreview} disabled={loading}>
+            <Button
+              color="alternative"
+              on:click={handlePreview}
+              disabled={loading}
+            >
               Previsualizar
             </Button>
           {/if}
@@ -340,7 +356,11 @@
           >
             Exportar CSV
           </Button>
-          <Button color="alternative" on:click={handlePrint} disabled={!preview}>
+          <Button
+            color="alternative"
+            on:click={handlePrint}
+            disabled={!preview}
+          >
             Imprimir
           </Button>
         </div>
@@ -370,7 +390,9 @@
             <tbody>
               {#each preview.items as item}
                 <tr class="border-t">
-                  <td class="py-2 pr-3">{item.student?.name ?? `ID ${item.studentId}`}</td>
+                  <td class="py-2 pr-3"
+                    >{item.student?.name ?? `ID ${item.studentId}`}</td
+                  >
                   <td class="py-2 pr-3">
                     {item.department?.name ?? `ID ${item.departmentId}`}
                   </td>
@@ -380,7 +402,9 @@
                   <td class="py-2 pr-3">{item.tithe}</td>
                   <td class="py-2 pr-3">{item.total}</td>
                   <td class="py-2 pr-3">{item.payable}</td>
-                  <td class="py-2 pr-3">{item.receivable ?? item.recivable ?? 0}</td>
+                  <td class="py-2 pr-3"
+                    >{item.receivable ?? item.recivable ?? 0}</td
+                  >
                 </tr>
               {/each}
             </tbody>
@@ -397,8 +421,8 @@
         </div>
       {/if}
     {:else}
-      <Alert type="warning" dismissable>
-        No tienes permisos para ver esta seccion.
+      <Alert color="yellow" dismissable>
+        No tienes permisos para ver esta sección.
       </Alert>
     {/if}
   </div>

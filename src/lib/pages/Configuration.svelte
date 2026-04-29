@@ -4,11 +4,11 @@
   import type { PageConfigType } from "$lib/components/types";
   import Periods from "./configurations/Periods.svelte";
   import Departments from "./configurations/Departments.svelte";
-  import Students from "./configurations/Students.svelte";
   import Users from "./configurations/Users.svelte";
   import Roles from "./configurations/Roles.svelte";
   import Permissions from "./configurations/Permissions.svelte";
   import Pricing from "./configurations/Pricing.svelte";
+  import PdfTemplate from "./configurations/PdfTemplate.svelte";
   import { userStore } from "../../stores/user.store";
   import type { User } from "$lib/types";
   import { hasAnyPermission } from "$lib/utils/permissions";
@@ -31,12 +31,6 @@
       component: Departments,
       open: false,
       permissions: ["departments.read"],
-    },
-    {
-      title: "Estudiantes",
-      component: Students,
-      open: false,
-      permissions: ["students.read"],
     },
     {
       title: "Usuarios",
@@ -67,6 +61,12 @@
       component: Pricing,
       open: false,
       permissions: ["pricing.read"],
+    },
+    {
+      title: "Plantilla del PDF",
+      component: PdfTemplate,
+      open: false,
+      permissions: ["configs.read"],
     },
   ];
 

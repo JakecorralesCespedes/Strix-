@@ -46,3 +46,21 @@ export async function updatePeriod(id: number, payload: PeriodPayload) {
     return null;
   }
 }
+
+export type ClosePeriodResponse = {
+  period: Period;
+  emailsSent: number;
+  emailsSkipped: number;
+};
+
+export async function closePeriod(id: number) {
+  try {
+    const result = await api.post<ClosePeriodResponse>(
+      `${DEFAULT_ENDPOINT}/${id}/close`,
+    );
+    return result.data;
+  } catch (error) {
+    console.error("Error closing period:", error);
+    return null;
+  }
+}

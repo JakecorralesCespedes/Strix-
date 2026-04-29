@@ -25,7 +25,9 @@
     {/each}
     <!-- Ruta para manejar 404 -->
     <Route path="*">
-      <h1 class="text-center text-2xl font-semibold">404 - Page Not Found</h1>
+      <h1 class="text-center text-2xl font-semibold">
+        404 - Página no encontrada
+      </h1>
     </Route>
   </Layout>
 </Router>

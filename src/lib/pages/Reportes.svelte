@@ -2,7 +2,11 @@
   import { Alert, Button, Card, Heading, P, Select } from "flowbite-svelte";
   import { navigate } from "svelte-routing";
   import { onMount } from "svelte";
-  import { getPeriods } from "$lib/services/period.service";
+  import {
+    downloadPeriodReport,
+    getPeriods,
+  } from "$lib/services/period.service";
+  import { downloadBlob } from "$lib/utils/download";
   import { getDepartment } from "$lib/services/department.service";
   import {
     applyPayroll,
@@ -45,6 +49,7 @@
   let closePeriod = false;
   let preview: PayrollPreviewResponse | null = null;
   let loading = false;
+  let downloadingPdf = false;
   let error: string | null = null;
   let success: string | null = null;
   let canPreview = false;
@@ -258,12 +263,29 @@
     URL.revokeObjectURL(url);
   }
 
-  function handlePrint() {
-    if (!preview) {
-      error = "Genera una previsualización primero.";
+  async function handleDownloadPdf() {
+    if (!selectedPeriodId) {
+      error = "Selecciona un periodo para descargar el PDF.";
       return;
     }
-    window.print();
+
+    downloadingPdf = true;
+    error = null;
+
+    try {
+      const target = periods.find((item) => item.id === selectedPeriodId);
+      const pdf = (await downloadPeriodReport(selectedPeriodId)) as Blob;
+      const safeName =
+        `${target?.name ?? `periodo-${selectedPeriodId}`}`.replace(/\s+/g, "_");
+      downloadBlob(pdf, `reporte-${safeName}.pdf`);
+    } catch (e) {
+      error =
+        e instanceof Error
+          ? e.message
+          : "No se pudo descargar el PDF del periodo.";
+    } finally {
+      downloadingPdf = false;
+    }
   }
 
   onMount(() => {
@@ -358,10 +380,10 @@
           </Button>
           <Button
             color="alternative"
-            on:click={handlePrint}
-            disabled={!preview}
+            on:click={handleDownloadPdf}
+            disabled={!selectedPeriodId || downloadingPdf}
           >
-            Imprimir
+            PDF
           </Button>
         </div>
       </div>

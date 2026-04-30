@@ -42,9 +42,13 @@
   let activeDepartmentId: number | null = null;
   let editPassword = "";
 
+  const USER_EMAIL_DOMAIN = "@unadeca.net";
   let createName = "";
-  let createEmail = "";
+  let createEmailPrefix = "";
   let createPhone = "";
+  $: createEmail = createEmailPrefix.includes("@")
+    ? createEmailPrefix
+    : createEmailPrefix + USER_EMAIL_DOMAIN;
   let createPassword = "";
   let createAssignments: Array<{
     departmentId: number | null;
@@ -218,7 +222,7 @@
 
   function openCreate() {
     createName = "";
-    createEmail = "";
+    createEmailPrefix = "";
     createPhone = "";
     createPassword = "";
     createAssignments = [{ departmentId: null, roleId: null }];
@@ -457,11 +461,21 @@
       </div>
       <div>
         <Label class="mb-1">Correo electrónico</Label>
-        <Input
-          type="email"
-          bind:value={createEmail}
-          placeholder="usuario@universidad.edu"
-        />
+        <div
+          class="flex items-center rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500"
+        >
+          <input
+            type="text"
+            bind:value={createEmailPrefix}
+            placeholder="usuario"
+            class="flex-1 px-3 py-2 outline-none bg-white text-sm min-w-0"
+          />
+          <span
+            class="px-2 py-2 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 select-none whitespace-nowrap"
+          >
+            {USER_EMAIL_DOMAIN}
+          </span>
+        </div>
       </div>
       <div>
         <Label class="mb-1">Contrasena inicial</Label>

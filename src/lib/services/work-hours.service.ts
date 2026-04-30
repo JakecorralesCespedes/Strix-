@@ -22,6 +22,7 @@ export type CreateWorkHoursBody = {
   price?: number;
   priceId?: number;
   status?: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string | null;
   studentId: number;
   departmentId: number;
   periodId: number;
@@ -29,6 +30,30 @@ export type CreateWorkHoursBody = {
 };
 
 export type UpdateWorkHoursBody = Partial<CreateWorkHoursBody>;
+
+async function extractErrorMessage(error: any): Promise<string | null> {
+  const data = error?.response?.data;
+  if (!data) return null;
+
+  if (data instanceof Blob) {
+    const text = await data.text();
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.message === "string") {
+        return parsed.message;
+      }
+    } catch {
+      // Ignore JSON parse errors and fallback to plain text.
+    }
+    return text || null;
+  }
+
+  if (typeof data?.message === "string") {
+    return data.message;
+  }
+
+  return null;
+}
 
 export async function getWorkHours(query?: PaginationQuery) {
   try {
@@ -69,5 +94,21 @@ export async function updateWorkHours(id: number, data: UpdateWorkHoursBody) {
     return result.data;
   } catch (error) {
     return null;
+  }
+}
+
+export async function downloadWorkHoursReport(
+  query?: PaginationQuery,
+): Promise<Blob> {
+  try {
+    const result = await api.get(`${DEFAULT_ENDPOINT}/report`, {
+      params: query,
+      responseType: "blob",
+    });
+    return result.data as Blob;
+  } catch (error) {
+    console.error("Error downloading work hours report:", error);
+    const message = await extractErrorMessage(error);
+    throw new Error(message || "No se pudo descargar el reporte de horas.");
   }
 }

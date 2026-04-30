@@ -10,22 +10,36 @@
     TableBodyCell,
     TableBodyRow,
   } from "flowbite-svelte";
+  import { navigate } from "svelte-routing";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
   import Table from "$lib/components/Table.svelte";
   import {
     closePeriod,
     createPeriod,
+    downloadPeriodReport,
     getPeriods,
+    reopenPeriod,
     updatePeriod,
   } from "$lib/services/period.service";
   import {
+    getWorkHours,
+    updateWorkHours,
+  } from "$lib/services/work-hours.service";
+  import {
     exportPeriodsToExcel,
-    exportPeriodsToPdf,
+    exportPeriodHoursToExcel,
   } from "$lib/utils/period-export";
+  import { downloadBlob } from "$lib/utils/download";
   import { authReady, userStore } from "$stores/user.store";
   import { hasAnyPermission } from "$lib/utils/permissions";
-  import type { Period, TableHeader, TablePagination, User } from "$lib/types";
+  import type {
+    Period,
+    TableHeader,
+    TablePagination,
+    User,
+    WorkHours,
+  } from "$lib/types";
 
   let periods: Period[] = [];
   let error: string | null = null;
@@ -46,16 +60,34 @@
     end: "",
   };
   let formSaving = false;
+
+  // Student-hours expansion state
+  let expandedPeriodId: number | null = null;
+  let periodHours: WorkHours[] = [];
+  let loadingPeriodHours = false;
+  let expandedStudentIds = new Set<number>();
+  let hoursEdits: Record<
+    number,
+    { amount: number; price: number; saving: boolean }
+  > = {};
   let closeModalOpen = false;
   let closeTargetPeriod: Period | null = null;
   let closing = false;
+  let reopenModalOpen = false;
+  let reopenTargetPeriod: Period | null = null;
+  let reopenStatus: "ACTIVE" | "FINISHED" | "PENDING" = "ACTIVE";
+  let reopening = false;
   let currentUser: User | null = null;
   let canWrite = false;
+  let canReopen = false;
+  let canViewWorkHours = false;
   userStore.subscribe((value) => {
     currentUser = value.dbUser ?? null;
   });
 
   $: canWrite = hasAnyPermission(currentUser, ["periods.write"]);
+  $: canReopen = hasAnyPermission(currentUser, ["periods.reopen"]);
+  $: canViewWorkHours = hasAnyPermission(currentUser, ["work-hours.read"]);
 
   const PERIOD_STATUS_LABELS: Record<string, string> = {
     PENDING: "Pendiente",
@@ -142,6 +174,93 @@
     };
     error = null;
     formOpen = true;
+  }
+
+  async function togglePeriodHours(period: Period) {
+    if (expandedPeriodId === period.id) {
+      expandedPeriodId = null;
+      periodHours = [];
+      expandedStudentIds = new Set();
+      hoursEdits = {};
+      return;
+    }
+    expandedPeriodId = period.id;
+    periodHours = [];
+    expandedStudentIds = new Set();
+    hoursEdits = {};
+    loadingPeriodHours = true;
+    const res = await getWorkHours({ periodId: period.id, size: 200 });
+    periodHours = res?.data ?? [];
+    loadingPeriodHours = false;
+  }
+
+  function groupHoursByStudent(hours: WorkHours[]) {
+    const map = new Map<
+      number,
+      { student: WorkHours["student"]; hours: WorkHours[]; totalHours: number }
+    >();
+    for (const h of hours) {
+      if (!h.studentId) continue;
+      if (!map.has(h.studentId)) {
+        map.set(h.studentId, { student: h.student, hours: [], totalHours: 0 });
+      }
+      const entry = map.get(h.studentId)!;
+      entry.hours.push(h);
+      entry.totalHours += h.amount ?? 0;
+    }
+    return [...map.values()];
+  }
+
+  $: studentsInPeriod = groupHoursByStudent(periodHours);
+
+  function toggleStudent(studentId: number) {
+    const next = new Set(expandedStudentIds);
+    if (next.has(studentId)) {
+      next.delete(studentId);
+    } else {
+      next.add(studentId);
+    }
+    expandedStudentIds = next;
+  }
+
+  function initHoursEdit(hour: WorkHours) {
+    if (!hoursEdits[hour.id]) {
+      hoursEdits = {
+        ...hoursEdits,
+        [hour.id]: {
+          amount: hour.amount ?? 0,
+          price: hour.price ?? 0,
+          saving: false,
+        },
+      };
+    }
+    return hoursEdits[hour.id];
+  }
+
+  async function saveHourEdit(hourId: number) {
+    const edit = hoursEdits[hourId];
+    if (!edit) return;
+    hoursEdits = { ...hoursEdits, [hourId]: { ...edit, saving: true } };
+    const updated = await updateWorkHours(hourId, {
+      amount: edit.amount,
+      price: edit.price,
+    });
+    hoursEdits = { ...hoursEdits, [hourId]: { ...edit, saving: false } };
+    if (updated) {
+      periodHours = periodHours.map((h) =>
+        h.id === hourId
+          ? {
+              ...h,
+              amount: edit.amount,
+              price: edit.price,
+              total: edit.amount * edit.price,
+            }
+          : h,
+      );
+      success = "Horas actualizadas.";
+    } else {
+      error = "No se pudo actualizar el registro.";
+    }
   }
 
   async function savePeriod() {
@@ -236,30 +355,6 @@
     return allPeriods;
   }
 
-  async function handleExportPdf() {
-    exportingPdf = true;
-    try {
-      const allPeriods = await getAllPeriods();
-      exportPeriodsToPdf(allPeriods);
-    } catch (e) {
-      error = "No se pudo generar el PDF de periodos.";
-    } finally {
-      exportingPdf = false;
-    }
-  }
-
-  async function handleExportExcel() {
-    exportingExcel = true;
-    try {
-      const allPeriods = await getAllPeriods();
-      exportPeriodsToExcel(allPeriods);
-    } catch (e) {
-      error = "No se pudo generar el Excel de periodos.";
-    } finally {
-      exportingExcel = false;
-    }
-  }
-
   function openCloseModal(period: Period) {
     if (!canWrite) {
       error = "No tienes permisos para cerrar periodos.";
@@ -289,8 +384,39 @@
     }
 
     closeModalOpen = false;
-    success = `Periodo "${closeTargetPeriod.name}" cerrado. Correos enviados: ${res.emailsSent}. Omitidos por falta de correo o SMTP inactivo: ${res.emailsSkipped}.`;
+    if (res.reason) {
+      success = `Periodo "${closeTargetPeriod.name}" cerrado. ${res.reason}`;
+    } else {
+      success = `Periodo "${closeTargetPeriod.name}" cerrado. Correos enviados: ${res.emailsSent}. Omitidos: ${res.emailsSkipped}. Aprobadas: ${res.approvedCount}. Pendientes: ${res.pendingCount}. Rechazadas: ${res.rejectedCount}.`;
+    }
     closeTargetPeriod = null;
+    await loadPeriods();
+  }
+
+  function openReopenModal(period: Period) {
+    if (!canReopen) {
+      error = "No tienes permisos para reabrir periodos.";
+      return;
+    }
+    reopenTargetPeriod = period;
+    reopenStatus = "ACTIVE";
+    reopenModalOpen = true;
+  }
+
+  async function confirmReopenPeriod() {
+    if (!reopenTargetPeriod) return;
+    reopening = true;
+    const res = await reopenPeriod(reopenTargetPeriod.id, reopenStatus);
+    reopening = false;
+
+    if (!res) {
+      error = "No se pudo reabrir el periodo.";
+      return;
+    }
+
+    success = `Periodo "${reopenTargetPeriod.name}" reabierto con estado ${periodStatusLabel(reopenStatus)}.`;
+    reopenModalOpen = false;
+    reopenTargetPeriod = null;
     await loadPeriods();
   }
 
@@ -316,23 +442,55 @@
       return;
     }
 
-    exportModalOpen = false;
-
     if (selectedFormat === "pdf") {
+      if (selectedPeriods.length !== 1) {
+        error = "El PDF solo se puede generar para un periodo a la vez.";
+        return;
+      }
+      exportModalOpen = false;
       exportingPdf = true;
       try {
-        exportPeriodsToPdf(selectedPeriods);
+        const target = selectedPeriods[0];
+        const pdf = (await downloadPeriodReport(target.id)) as Blob;
+        const safeName = `${target.name || `periodo-${target.id}`}`.replace(
+          /\s+/g,
+          "_",
+        );
+        downloadBlob(pdf, `reporte-${safeName}.pdf`);
       } catch (e) {
-        error = "No se pudo generar el PDF de periodos.";
+        error =
+          e instanceof Error
+            ? e.message
+            : "No se pudo generar el PDF de periodos.";
       } finally {
         exportingPdf = false;
       }
       return;
     }
 
+    exportModalOpen = false;
     exportingExcel = true;
     try {
-      exportPeriodsToExcel(selectedPeriods);
+      if (selectedPeriods.length === 1) {
+        const target = selectedPeriods[0];
+        const hoursRes = await getWorkHours({
+          periodId: target.id,
+          size: 1000,
+        });
+        const hoursData = (hoursRes?.data ?? []).map((h) => ({
+          studentName: h.student?.name ?? "-",
+          studentCode: h.student?.code ?? "-",
+          departmentName: h.department?.name ?? "-",
+          date: new Date(h.start),
+          description: h.name ?? "Horas beca",
+          status: h.status,
+          hours: h.amount ?? 0,
+          pricePerHour: h.price ?? 0,
+        }));
+        exportPeriodHoursToExcel(target, hoursData);
+      } else {
+        exportPeriodsToExcel(selectedPeriods);
+      }
     } catch (e) {
       error = "No se pudo generar el Excel de periodos.";
     } finally {
@@ -390,16 +548,27 @@
       <TableBodyCell>{new Date(row.end).toLocaleDateString()}</TableBodyCell>
       <TableBodyCell>{periodStatusLabel(row.status)}</TableBodyCell>
       <TableBodyCell>
-        {#if canWrite}
-          <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2">
+          {#if canViewWorkHours || canWrite}
+            <Button
+              size="xs"
+              color={expandedPeriodId === row.id ? "dark" : "alternative"}
+              on:click={() => togglePeriodHours(row)}
+            >
+              {expandedPeriodId === row.id ? "Cerrar" : "Editar"}
+            </Button>
+          {/if}
+          {#if canWrite && (row.status !== "CLOSED" || canReopen)}
             <Button
               size="xs"
               color="alternative"
               on:click={() => openEditForm(row)}
             >
-              Editar
+              Datos
             </Button>
-            {#if row.status !== "CLOSED"}
+          {/if}
+          {#if row.status !== "CLOSED"}
+            {#if canWrite}
               <Button
                 size="xs"
                 color="red"
@@ -408,17 +577,132 @@
                 Cerrar
               </Button>
             {/if}
-          </div>
-        {:else}
-          -
-        {/if}
+          {:else if canReopen}
+            <Button
+              size="xs"
+              color="primary"
+              on:click={() => openReopenModal(row)}
+            >
+              Reabrir
+            </Button>
+          {/if}
+          {#if !canViewWorkHours && !canWrite && !canReopen}
+            -
+          {/if}
+        </div>
       </TableBodyCell>
     </TableBodyRow>
+    {#if expandedPeriodId === row.id}
+      <TableBodyRow>
+        <TableBodyCell colspan={5} class="p-0 bg-gray-50">
+          <div class="p-4">
+            {#if loadingPeriodHours}
+              <p class="text-sm text-gray-500 text-center py-4">
+                Cargando estudiantes...
+              </p>
+            {:else if studentsInPeriod.length === 0}
+              <p class="text-sm text-gray-500 text-center py-4">
+                Sin registros de horas en este período.
+              </p>
+            {:else}
+              <div class="grid gap-2">
+                {#each studentsInPeriod as { student, hours, totalHours }}
+                  {@const studentId = student?.id ?? hours[0]?.studentId ?? 0}
+                  <div
+                    class="border rounded-lg bg-white overflow-hidden shadow-sm"
+                  >
+                    <button
+                      class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                      on:click={() => toggleStudent(studentId)}
+                    >
+                      <div>
+                        <p class="font-medium text-sm">
+                          {student?.name ?? `Estudiante ${studentId}`}
+                        </p>
+                        <p class="text-xs text-gray-500">
+                          {student?.code ?? ""}
+                        </p>
+                      </div>
+                      <div
+                        class="flex items-center gap-3 text-xs text-gray-500 shrink-0"
+                      >
+                        <span class="font-medium"
+                          >{totalHours.toFixed(2)} hrs</span
+                        >
+                        <span class="text-base"
+                          >{expandedStudentIds.has(studentId) ? "▲" : "▼"}</span
+                        >
+                      </div>
+                    </button>
+                    {#if expandedStudentIds.has(studentId)}
+                      <div class="border-t divide-y">
+                        {#each hours as hour}
+                          {@const edit = initHoursEdit(hour)}
+                          <div
+                            class="px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 items-center"
+                          >
+                            <div class="min-w-0">
+                              <p class="text-xs text-gray-400">
+                                {new Date(hour.start).toLocaleDateString(
+                                  "es-CR",
+                                )}
+                              </p>
+                              <p class="text-sm truncate">
+                                {hour.name ?? "Horas beca"}
+                              </p>
+                              <p class="text-xs text-gray-400 capitalize">
+                                {hour.status?.toLowerCase()}
+                              </p>
+                            </div>
+                            <div class="flex flex-col gap-0.5">
+                              <label class="text-xs text-gray-500">Horas</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                bind:value={edit.amount}
+                                on:input={() =>
+                                  (hoursEdits = { ...hoursEdits })}
+                                class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                              />
+                            </div>
+                            <div class="flex flex-col gap-0.5">
+                              <label class="text-xs text-gray-500">₡/hr</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                bind:value={edit.price}
+                                on:input={() =>
+                                  (hoursEdits = { ...hoursEdits })}
+                                class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+                              />
+                            </div>
+                            <Button
+                              size="xs"
+                              color="primary"
+                              disabled={edit.saving}
+                              on:click={() => saveHourEdit(hour.id)}
+                            >
+                              {edit.saving ? "..." : "Guardar"}
+                            </Button>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </TableBodyCell>
+      </TableBodyRow>
+    {/if}
   </Table>
 </div>
 
 <Modal
-  title={formMode === "create" ? "Crear periodo" : "Editar periodo"}
+  title={formMode === "create" ? "Crear periodo" : "Editar datos del periodo"}
   bind:open={formOpen}
   outsideclose
 >
@@ -472,7 +756,7 @@
     <p class="text-sm text-gray-600">
       Al cerrar el periodo se enviará un correo con el reporte en PDF (días,
       tarifa y total) a cada estudiante con horas aprobadas. Esta acción no se
-      puede revertir.
+      puede revertir sin un permiso especial para reabrir.
     </p>
   </div>
 
@@ -520,5 +804,38 @@
 
   <svelte:fragment slot="footer">
     <Button color="primary" on:click={confirmExport}>Descargar</Button>
+  </svelte:fragment>
+</Modal>
+
+<Modal title="Reabrir periodo" bind:open={reopenModalOpen} outsideclose>
+  <div class="grid gap-3">
+    <p>
+      Selecciona el estado con el que deseas reabrir el periodo
+      <strong>{reopenTargetPeriod?.name ?? ""}</strong>.
+    </p>
+    <div>
+      <Label class="mb-1 block">Estado</Label>
+      <Select bind:value={reopenStatus}>
+        <option value="ACTIVE">Activo</option>
+        <option value="FINISHED">Finalizado</option>
+        <option value="PENDING">Pendiente</option>
+      </Select>
+    </div>
+  </div>
+
+  <svelte:fragment slot="footer">
+    <Button
+      color="alternative"
+      on:click={() => (reopenModalOpen = false)}
+      disabled={reopening}
+    >
+      Cancelar
+    </Button>
+    <Button color="primary" on:click={confirmReopenPeriod} disabled={reopening}>
+      Reabrir
+      {#if reopening}
+        <Spinner size="sm" class="ml-2" />
+      {/if}
+    </Button>
   </svelte:fragment>
 </Modal>

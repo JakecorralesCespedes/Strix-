@@ -151,6 +151,7 @@ export type WorkHours = {
   price: number | null;
   total: number | null;
   status: WorkHoursStatus;
+  rejectionReason?: string | null;
   isAdditional: boolean;
   registedBy: number;
   studentId: number;

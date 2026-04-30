@@ -9,12 +9,14 @@
     Label,
     Modal,
     Select,
+    Textarea,
     Toggle,
   } from "flowbite-svelte";
   import { onMount } from "svelte";
   import Table from "$lib/components/Table.svelte";
   import {
     createWorkHours,
+    downloadWorkHoursReport,
     getWorkHours,
     updateWorkHours,
   } from "$lib/services/work-hours.service";
@@ -28,6 +30,7 @@
   } from "$lib/services/department-prices.service";
   import { hasAnyPermission } from "$lib/utils/permissions";
   import { userStore } from "../../stores/user.store";
+  import { downloadBlob } from "$lib/utils/download";
   import type {
     Department,
     Period,
@@ -58,6 +61,7 @@
   let currentUser: User | null = null;
   let selectedDepartmentId: number | null = null;
   let selectedStudentFilterId: number | null = null;
+  let selectedPeriodFilterId: number | null = null;
   let selectedStudentId: number | null = null;
   let selectedStudentRelationId: number | null = null;
   let selectedAdditionalStudentId: number | null = null;
@@ -84,6 +88,13 @@
   let canViewFinancials = false;
   let canApprove = false;
   let canWrite = false;
+  let exportingPdf = false;
+  let verifyOpen = false;
+  let rejectReasonOpen = false;
+  let verifyTarget: WorkHours | null = null;
+  let verifyReason = "";
+  let verifyError: string | null = null;
+  let verifying = false;
   let headers: TableHeader[] = [];
 
   $: canViewFinancials = hasAnyPermission(
@@ -101,6 +112,14 @@
     ["work-hours.write"],
     selectedDepartmentId,
   );
+
+  function canEditApprovedRow(row: WorkHours) {
+    return hasAnyPermission(
+      currentUser,
+      ["work-hours.edit-approved"],
+      row.departmentId,
+    );
+  }
 
   $: headers = [
     { name: "Estudiante", field: "studentName" },
@@ -189,19 +208,49 @@
     URL.revokeObjectURL(url);
   }
 
-  function handlePrint() {
+  async function handleDownloadPdf() {
     if (!workHours.length) {
-      error = "No hay horas registradas para imprimir.";
+      error = "No hay horas registradas para exportar.";
       return;
     }
-    window.print();
+
+    exportingPdf = true;
+    error = null;
+
+    try {
+      const periodFilterId = selectedPeriodFilterId
+        ? Number(selectedPeriodFilterId)
+        : undefined;
+      const pdf = await downloadWorkHoursReport({
+        departmentId: selectedDepartmentId ?? undefined,
+        studentId: selectedStudentFilterId ?? undefined,
+        periodId: periodFilterId,
+        status: statusFilter === "ALL" ? undefined : statusFilter,
+        startDate: startDateFilter || undefined,
+        endDate: endDateFilter || undefined,
+      });
+
+      const fileName = `reporte-horas-beca-${Date.now()}.pdf`;
+      downloadBlob(pdf, fileName);
+    } catch (e) {
+      error =
+        e instanceof Error
+          ? e.message
+          : "No se pudo generar el PDF de horas beca.";
+    } finally {
+      exportingPdf = false;
+    }
   }
 
   async function loadWorkHours() {
+    const periodFilterId = selectedPeriodFilterId
+      ? Number(selectedPeriodFilterId)
+      : undefined;
     const res = await getWorkHours({
       page: pagination.page,
       departmentId: selectedDepartmentId ?? undefined,
       studentId: selectedStudentFilterId ?? undefined,
+      periodId: periodFilterId,
       status: statusFilter === "ALL" ? undefined : statusFilter,
       startDate: startDateFilter || undefined,
       endDate: endDateFilter || undefined,
@@ -391,9 +440,6 @@
       return;
     }
 
-    const payloadStatus =
-      formMode === "update" && canApprove ? formStatus : undefined;
-
     const payload = {
       name: formName,
       start: new Date(formStart).toISOString(),
@@ -401,7 +447,6 @@
       amount: canViewFinancials ? formAmount : undefined,
       price: canViewFinancials ? formPrice : undefined,
       priceId: selectedPriceId ? Number(selectedPriceId) : undefined,
-      status: payloadStatus,
       studentId: resolvedStudentId,
       departmentId: Number(selectedDepartmentId),
       periodId: Number(selectedPeriodId),
@@ -431,6 +476,56 @@
     await loadWorkHours();
   }
 
+  function openVerify(row: WorkHours) {
+    if (!canApprove) return;
+    verifyTarget = row;
+    verifyOpen = true;
+    verifyReason = row.rejectionReason ?? "";
+    verifyError = null;
+    error = null;
+    success = null;
+  }
+
+  function openRejectReason() {
+    verifyReason = verifyTarget?.rejectionReason ?? "";
+    verifyError = null;
+    rejectReasonOpen = true;
+  }
+
+  async function handleVerify(status: "APPROVED" | "REJECTED" | "PENDING") {
+    if (!verifyTarget) return;
+    if (status === "REJECTED" && !verifyReason.trim()) {
+      verifyError = "Ingresa el motivo del rechazo.";
+      return;
+    }
+
+    verifying = true;
+    const updated = await updateWorkHours(verifyTarget.id, {
+      status,
+      rejectionReason: status === "REJECTED" ? verifyReason.trim() : null,
+    });
+    verifying = false;
+
+    if (!updated) {
+      error = "No se pudo actualizar el estado.";
+      rejectReasonOpen = false;
+      return;
+    }
+
+    verifyOpen = false;
+    rejectReasonOpen = false;
+    verifyTarget = null;
+    verifyReason = "";
+    verifyError = null;
+    success =
+      status === "APPROVED"
+        ? "Aprobación exitosa."
+        : status === "REJECTED"
+          ? "Rechazo registrado correctamente."
+          : "Regresado a pendiente.";
+    await loadWorkHours();
+  }
+
   function nextPage() {
     pagination.page = pagination.next_page ?? pagination.page;
     loadWorkHours();
@@ -443,6 +538,7 @@
 
   function clearFilters() {
     selectedStudentFilterId = null;
+    selectedPeriodFilterId = null;
     statusFilter = "ALL";
     startDateFilter = "";
     endDateFilter = "";
@@ -516,8 +612,9 @@
     loadAllStudents(additionalStudentSearch || undefined);
   }
 
-  $: if (selectedDepartmentId) {
+  $: if (selectedDepartmentId !== null) {
     selectedStudentFilterId;
+    selectedPeriodFilterId;
     statusFilter;
     startDateFilter;
     endDateFilter;
@@ -529,6 +626,14 @@
   }
 
   onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    const periodParam = params.get("periodId");
+    if (periodParam) {
+      const parsed = Number(periodParam);
+      if (!Number.isNaN(parsed)) {
+        selectedPeriodFilterId = parsed;
+      }
+    }
     loadDepartments();
     loadPeriods();
     loadPrices();
@@ -558,8 +663,8 @@
       <Button
         size="sm"
         color="alternative"
-        on:click={handlePrint}
-        disabled={!workHours.length}>Imprimir</Button
+        on:click={handleDownloadPdf}
+        disabled={!workHours.length || exportingPdf}>PDF</Button
       >
       <Button
         size="sm"
@@ -574,7 +679,7 @@
   {#if showFilters}
     <div class="p-3 border rounded-lg bg-gray-50 grid gap-3">
       <div
-        class="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+        class="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
       >
         <div>
           <Label class="text-xs text-gray-500 mb-1">Departamento</Label>
@@ -596,6 +701,15 @@
               <option value={relation.studentId}>
                 {relation.student?.name ?? `ID ${relation.studentId}`}
               </option>
+            {/each}
+          </Select>
+        </div>
+        <div>
+          <Label class="text-xs text-gray-500 mb-1">Periodo</Label>
+          <Select bind:value={selectedPeriodFilterId}>
+            <option value={""}>Todos</option>
+            {#each periods as period}
+              <option value={period.id}>{period.name}</option>
             {/each}
           </Select>
         </div>
@@ -663,6 +777,10 @@
           class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs text-gray-600"
         >
           <div>
+            <p class="text-gray-400">Periodo</p>
+            <p class="font-medium">{row.period?.name ?? "-"}</p>
+          </div>
+          <div>
             <p class="text-gray-400">Entrada</p>
             <p>
               {new Date(row.start).toLocaleString("es-CR", {
@@ -704,17 +822,32 @@
           {/if}
         </div>
 
-        {#if canWrite}
-          <div class="flex justify-end">
+        {#if row.status === "REJECTED" && row.rejectionReason}
+          <p class="text-xs text-red-600">Motivo: {row.rejectionReason}</p>
+        {/if}
+
+        <div class="flex justify-end gap-2">
+          {#if canApprove}
             <Button
               size="xs"
-              color="alternative"
-              on:click={() => openEdit(row)}
+              color={row.status === "PENDING" ? "primary" : "alternative"}
+              on:click={() => openVerify(row)}
             >
-              {canApprove && row.status === "PENDING" ? "Verificar" : "Editar"}
+              {row.status === "PENDING" ? "Verificar" : "Estado"}
             </Button>
-          </div>
-        {/if}
+          {/if}
+          {#if canWrite && (row.status !== "APPROVED" || canEditApprovedRow(row))}
+            {#if !canApprove || row.status !== "PENDING"}
+              <Button
+                size="xs"
+                color="alternative"
+                on:click={() => openEdit(row)}
+              >
+                Editar
+              </Button>
+            {/if}
+          {/if}
+        </div>
       </div>
     {/each}
     {#if pagination.prev_page || pagination.next_page}
@@ -926,19 +1059,10 @@
     {/if}
 
     {#if formMode === "update" && canApprove}
-      <div class="p-3 bg-blue-50 border border-blue-200 rounded grid gap-2">
-        <p class="text-sm font-medium text-blue-900">
-          Verificación del jefe de departamento
-        </p>
-        <Select bind:value={formStatus}>
-          <option value="PENDING">Dejar como pendiente</option>
-          <option value="APPROVED">Aprobar</option>
-          <option value="REJECTED">Rechazar</option>
-        </Select>
-        <p class="text-xs text-blue-800">
-          Al aprobar, las horas quedan firmes en el periodo.
-        </p>
-      </div>
+      <Alert color="blue">
+        La verificacion se realiza desde el boton <b>Verificar</b> en la lista de
+        horas. Aqui solo puedes editar los datos del registro.
+      </Alert>
     {:else if formMode === "create"}
       <Alert color="yellow">
         Las horas se registran automáticamente como <b>Pendiente</b>. Solo el
@@ -954,5 +1078,118 @@
     <Button color="alternative" on:click={() => (formOpen = false)}
       >Cerrar</Button
     >
+  </svelte:fragment>
+</Modal>
+
+<Modal title="Verificar horas" bind:open={verifyOpen} outsideclose>
+  {#if verifyTarget}
+    <div class="grid gap-3">
+      <div class="grid sm:grid-cols-2 gap-2 text-sm">
+        <div>
+          <p class="text-xs text-gray-400">Estudiante</p>
+          <p class="font-medium">{verifyTarget.student?.name ?? "-"}</p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-400">Estado actual</p>
+          <p class="font-medium capitalize">
+            {verifyTarget.status === "APPROVED"
+              ? "Aprobada"
+              : verifyTarget.status === "REJECTED"
+                ? "Rechazada"
+                : "Pendiente"}
+          </p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-400">Fecha</p>
+          <p>{new Date(verifyTarget.start).toLocaleDateString("es-CR")}</p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-400">Horas</p>
+          <p>{verifyTarget.amount ?? "-"}</p>
+        </div>
+      </div>
+      {#if verifyTarget.status === "REJECTED" && verifyTarget.rejectionReason}
+        <div class="p-2 bg-red-50 border border-red-100 rounded text-sm">
+          <p class="text-xs font-medium text-red-700 mb-1">
+            Motivo de rechazo:
+          </p>
+          <p class="text-red-800">{verifyTarget.rejectionReason}</p>
+        </div>
+      {/if}
+      <p class="text-xs text-gray-400">
+        Selecciona la acción que deseas aplicar.
+      </p>
+    </div>
+  {/if}
+
+  <svelte:fragment slot="footer">
+    <Button
+      color="alternative"
+      on:click={() => (verifyOpen = false)}
+      disabled={verifying}
+    >
+      Cancelar
+    </Button>
+    {#if verifyTarget?.status !== "PENDING"}
+      <Button
+        color="alternative"
+        on:click={() => handleVerify("PENDING")}
+        disabled={verifying}
+      >
+        {verifying ? "..." : "Pendiente"}
+      </Button>
+    {/if}
+    {#if verifyTarget?.status !== "REJECTED"}
+      <Button color="red" on:click={openRejectReason} disabled={verifying}>
+        Rechazar
+      </Button>
+    {/if}
+    {#if verifyTarget?.status !== "APPROVED"}
+      <Button
+        color="primary"
+        on:click={() => handleVerify("APPROVED")}
+        disabled={verifying}
+      >
+        {verifying ? "Aprobando..." : "Aprobar"}
+      </Button>
+    {/if}
+  </svelte:fragment>
+</Modal>
+
+<Modal title="Motivo del rechazo" bind:open={rejectReasonOpen} outsideclose>
+  <div class="grid gap-4">
+    <p class="text-sm text-gray-600">
+      Ingresa el motivo por el cual se rechazan las horas de
+      <strong>{verifyTarget?.student?.name ?? "este estudiante"}</strong>. Este
+      motivo quedará registrado y será visible en el historial.
+    </p>
+    <div>
+      <Label class="mb-1">Motivo del rechazo</Label>
+      <Textarea
+        rows={4}
+        bind:value={verifyReason}
+        placeholder="Ej: Horas fuera del rango permitido, registro duplicado, falta documentación..."
+      />
+      {#if verifyError}
+        <p class="text-xs text-red-600 mt-1">{verifyError}</p>
+      {/if}
+    </div>
+  </div>
+
+  <svelte:fragment slot="footer">
+    <Button
+      color="alternative"
+      on:click={() => (rejectReasonOpen = false)}
+      disabled={verifying}
+    >
+      Cancelar
+    </Button>
+    <Button
+      color="red"
+      on:click={() => handleVerify("REJECTED")}
+      disabled={verifying}
+    >
+      {verifying ? "Rechazando..." : "Confirmar rechazo"}
+    </Button>
   </svelte:fragment>
 </Modal>

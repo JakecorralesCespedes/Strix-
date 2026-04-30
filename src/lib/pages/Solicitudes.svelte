@@ -47,11 +47,15 @@
   let filterDepartmentId: number | null = null;
   let filterStatus: "ALL" | "PENDING" | "APPROVED" | "REJECTED" = "ALL";
 
+  const STUDENT_EMAIL_DOMAIN = "@unadeca.net";
   let createOpen = false;
   let createDepartmentId: number | null = null;
   let createName = "";
-  let createEmail = "";
+  let createEmailPrefix = "";
   let createPhone = "";
+  $: createEmail = createEmailPrefix.includes("@")
+    ? createEmailPrefix
+    : createEmailPrefix + STUDENT_EMAIL_DOMAIN;
   let createCode = "";
   let saving = false;
 
@@ -162,7 +166,7 @@
     if (!canWrite) return;
     createDepartmentId = filterDepartmentId ?? departmentOptions[0]?.id ?? null;
     createName = "";
-    createEmail = "";
+    createEmailPrefix = "";
     createPhone = "";
     createCode = "";
     error = null;
@@ -433,11 +437,21 @@
       </div>
       <div>
         <Label class="mb-1">Correo electrónico</Label>
-        <Input
-          type="email"
-          bind:value={createEmail}
-          placeholder="carmen@universidad.edu"
-        />
+        <div
+          class="flex items-center rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500"
+        >
+          <input
+            type="text"
+            bind:value={createEmailPrefix}
+            placeholder="carmen"
+            class="flex-1 px-3 py-2 outline-none bg-white text-sm min-w-0"
+          />
+          <span
+            class="px-2 py-2 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 select-none whitespace-nowrap"
+          >
+            {STUDENT_EMAIL_DOMAIN}
+          </span>
+        </div>
       </div>
       <div>
         <Label class="mb-1">Teléfono</Label>

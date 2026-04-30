@@ -660,9 +660,13 @@
                                 type="number"
                                 min="0"
                                 step="0.25"
-                                bind:value={edit.amount}
-                                on:input={() =>
-                                  (hoursEdits = { ...hoursEdits })}
+                                value={edit.amount}
+                                on:input={(e) => {
+                                  hoursEdits[hour.id].amount = parseFloat(
+                                    e.currentTarget.value,
+                                  );
+                                  hoursEdits = { ...hoursEdits };
+                                }}
                                 class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
                               />
                             </div>
@@ -672,9 +676,13 @@
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                bind:value={edit.price}
-                                on:input={() =>
-                                  (hoursEdits = { ...hoursEdits })}
+                                value={edit.price}
+                                on:input={(e) => {
+                                  hoursEdits[hour.id].price = parseFloat(
+                                    e.currentTarget.value,
+                                  );
+                                  hoursEdits = { ...hoursEdits };
+                                }}
                                 class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
                               />
                             </div>
